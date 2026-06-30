@@ -1,5 +1,5 @@
 {
-  "_comment": "Gold doc IDs match the DOC_ID headers in data/hero_case/*. single_hop = answerable from ONE doc (vector should do fine). multi_hop = requires connecting >=2 docs, usually across jurisdictions (where graph should win). Expand toward 25-30 for the final run; mix in noise-corpus queries once Sam's public data lands.",
+  "_comment": "Gold doc IDs match the DOC_ID headers in data/hero_case/*. single_hop = answerable from ONE doc (vector should do fine). multi_hop = requires connecting >=2 docs, usually across jurisdictions (where graph should win). Noise-corpus queries use file stems (e.g. 'incident_042') as gold IDs.",
   "queries": [
     {"id": "q01", "type": "single_hop", "query": "What tool caused the marks on the rear door at 14 Maple Heights Drive?", "gold": ["MH-0312-FOR"]},
     {"id": "q02", "type": "single_hop", "query": "What vehicle did a witness see near the Riverside Lane burglary?", "gold": ["RV-0788-WIT"]},
@@ -20,6 +20,16 @@
     {"id": "q16", "type": "multi_hop", "query": "Which forensic reports describe a blade with a nick on the left edge?", "gold": ["MH-0312-FOR", "RV-0788-FOR", "MH-0102-FOR"]},
 
     {"id": "q17", "type": "multi_hop", "query": "Does Daniel Marsh's alibi for the night of the Riverside burglary hold up against the other evidence?", "gold": ["MARSH-ALIBI", "MARSH-RECEIPT"]},
-    {"id": "q18", "type": "multi_hop", "query": "Is there any record that places the suspect near the Riverside scene on the night he claims he was out of state?", "gold": ["MARSH-ALIBI", "MARSH-RECEIPT", "RV-0788-NARR"]}
+    {"id": "q18", "type": "multi_hop", "query": "Is there any record that places the suspect near the Riverside scene on the night he claims he was out of state?", "gold": ["MARSH-ALIBI", "MARSH-RECEIPT", "RV-0788-NARR"]},
+
+    {"id": "q19", "type": "single_hop", "query": "Which Oak Park incident reports describe a burglary committed using a bump key on the front door?", "gold": ["incident_009", "incident_041", "incident_078", "incident_115"]},
+    {"id": "q20", "type": "single_hop", "query": "Find incident reports where the vehicle of interest was a red Ford F-150 pickup with rusted wheel wells.", "gold": ["incident_022", "incident_055", "incident_089"]},
+    {"id": "q21", "type": "single_hop", "query": "Which Westfield residential burglary reports mention a partial shoe impression photographed on the porch?", "gold": ["incident_007", "incident_034", "incident_063"]},
+    {"id": "q22", "type": "single_hop", "query": "Which incident reports describe a motor vehicle theft using a key-fob relay device with no physical entry marks?", "gold": ["incident_012", "incident_048", "incident_091"]},
+
+    {"id": "q23", "type": "multi_hop", "query": "Are there multiple Lakeview residential burglaries with the same forced-basement-window method that could indicate a pattern?", "gold": ["incident_003", "incident_027", "incident_061", "incident_094"]},
+    {"id": "q24", "type": "multi_hop", "query": "Which commercial burglary reports across different jurisdictions mention the offender cutting power before entry, and do any involve the same suspect description?", "gold": ["incident_016", "incident_052", "incident_087"]},
+    {"id": "q25", "type": "multi_hop", "query": "Across all Glenwood and Cedar Falls residential reports, are there recurring MO elements that suggest the same offender operated in both cities?", "gold": ["incident_004", "incident_028", "incident_058", "incident_095"]},
+    {"id": "q26", "type": "multi_hop", "query": "Connect all car theft reports that describe a vehicle being recovered stripped in an adjacent jurisdiction — do they share any suspect vehicle descriptions?", "gold": ["incident_019", "incident_044", "incident_073", "incident_102"]}
   ]
 }

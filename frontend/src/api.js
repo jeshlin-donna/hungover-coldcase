@@ -29,4 +29,13 @@ export const api = {
   hunch: (text, session_id) => post("/hunch", { text, session_id }),
   resolve: (session_ids) => post("/resolve", { session_ids }),
   expunge: (dataset) => post("/expunge", { dataset }),
+  missingHours: () => get("/missing-hours"),
+  nexus: (from_node, to_node) => post("/nexus", { from_node, to_node }),
+  interrogation: (suspect_id, focus_case) => post("/interrogation", { suspect_id, focus_case }),
+  whatif: (hypothesis, inject_edge) => post("/whatif", { hypothesis, inject_edge: inject_edge || {} }),
+  ingestFile: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return fetch(`${BASE}/ingest-file`, { method: "POST", body: fd }).then((r) => r.json());
+  },
 };

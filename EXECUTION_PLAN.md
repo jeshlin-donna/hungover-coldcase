@@ -4,242 +4,178 @@
 
 > Three burglaries. Two police departments. Zero shared memory. Caught after 23 months by luck — not investigation. Cognee would have connected them in one query.
 
-- **Team:** HungOver (3) — **Sam (lead · AI/backend)**, Jesh (AI/backend), Benjy (frontend / product). Three equal owners — backend depth, retrieval rigor, and product experience each independently decide whether we win.
+- **Team:** HungOver (3) — **Sam (lead · AI/backend)**, Jesh (AI/backend), Benjy (frontend / product)
 - **Track:** Best Use of **Open Source** (self-hosted Cognee) → MacBook per member
-- **Window:** Jun 29 – Jul 5, 2026. We're on **Day 2 (Jun 30)**. Submission target: **Jul 5 EOD**, with Jul 5 as buffer.
-- **AI assistant disclosure:** We use Claude/ChatGPT for code + docs. **This MUST be declared in the submission** (non-disclosure = DQ).
-
-> **📊 Build status (2026-06-30, Day 2) — live tracker: [`PROGRESS.md`](./PROGRESS.md)**
-> **Built:** repo + `memory_service` (4 APIs) · hero case (9 docs) · benchmark harness + queries · `demo.py` · FastAPI backend (live/degraded) · React frontend scaffold (3 panels) · mock server · README draft.
-> **🔑 The one gate:** Priority 0 (run `smoke_test.py` on a personal machine) — nothing runs live until this pins the `# VERIFY` SDK spots.
-> **Start now in parallel:** Jesh/Sam → Priority 0 · Benjy → build out frontend on mock server · Sam → source `data/raw/` corpus.
+- **Window:** Jun 29 – Jul 5, 2026. We're on **Day 2 (Jun 30)**. Submission target: **Jul 4 EOD**, buffer Jul 5.
+- **AI disclosure:** Claude/ChatGPT used for code + docs. Declared in submission.
 
 ---
 
 ## 0. The North Star — how we actually win
 
-The judges are **Cognee's own engineers**. They've seen 50 "chatbot-with-memory" submissions. We win by being the one submission that:
+The judges are **Cognee's own engineers**. We win by being the one submission that:
 
-1. **Earns the graph win empirically.** Not a 3-file scripted trick — a real, scaled corpus where Cognee's graph traversal beats naive vector search on *multi-hop* queries, with numbers (Recall@k, MRR). A credible benchmark is one half of the moat; the other half is a product that makes the win *obvious* on screen in 30 seconds. Both halves are decisive — neither wins alone.
-2. **Uses all four lifecycle APIs for real reasons** — `remember` (ingest at scale), `recall` (graph vs vector modes), `improve()` (a metric that climbs *live* when a lead is confirmed), `forget()` (record **expungement** — a genuine legal use case, not a throwaway).
-3. **Tells one gripping, specific story on top** — the Daniel Marsh burglary series — so the demo lands emotionally in 30 seconds.
-4. **Looks polished** — a real UI with a live graph, 3-way side-by-side retrieval, and a clean before/after.
+1. **Uses all 4 lifecycle APIs for real reasons** — `remember` (ingest), `recall` (graph+vector+insights modes), `improve()` (session hunch → permanent memory), `forget()` (legal expungement)
+2. **Earns the graph win empirically** — 3-way benchmark (naive vs RAG vs GRAPH) with Recall@k + MRR, showing graph >> vector on multi-hop queries
+3. **Tells one gripping story** — Daniel Marsh 3-burglary series, 2 departments, 23 months
+4. **Builds all 5 proposal modules** — not just a chatbot, a full investigative co-pilot
+5. **Looks spectacular** — 8-panel UI, temporal slider, force graph, alibi break animation
 
-### Scoring map (every criterion → the concrete thing that earns it)
-
-| Judging criterion | What earns it for us | Owner |
+### Judging criteria map
+| Criterion | What earns it | Owner |
 |---|---|---|
-| Potential Impact | Cross-jurisdiction siloed evidence is a real, serious problem; expungement framing shows civic responsibility | Jesh (narrative) |
-| Creativity & Innovation | Not on their sample list; graph-over-time investigation + self-improving leads | Sam |
-| Technical Excellence | Real corpus, 3-way benchmark, async status polling, clean architecture | Jesh |
-| **Best Use of Cognee** (heaviest) | All 4 APIs used *correctly* per docs; graph modes (`GRAPH_COMPLETION`/`INSIGHTS`); `improve()` with `session_ids`; `forget()` for expungement | Jesh + Sam |
-| User Experience | Live graph viz, split-screen comparison, one-click demo flow | Benjy |
-| Presentation Quality | README opens with the human story; tight 2-min demo video; benchmark chart | All |
-
-### Guardrails (don't lose points)
-- **Framing:** always *"shared memory connects evidence humans already had"* — **never** "AI predicts who's guilty." No predictive-policing language anywhere.
-- **Disclaimer prominent:** all data is synthetic/public; demo is illustrative, not operational.
-- **It must RUN.** A demo that crashes loses instantly. Priority 0 below de-risks this on Day 2.
+| Potential Impact | Cross-jurisdiction evidence gap is a real, serious problem; expungement = civic responsibility | Jesh |
+| Creativity & Innovation | 5 agentic modules (alibi, missing hours, nexus, interrogation co-pilot, what-if sandbox) | Sam |
+| Technical Excellence | 3-way benchmark, async pipeline, 8 endpoints, graph schema | Jesh |
+| **Best Use of Cognee** (heaviest) | All 4 APIs + GRAPH/VECTOR/INSIGHTS modes + session_ids in improve() + dataset-level forget() | Jesh + Sam |
+| User Experience | 8 panels, drag-drop ingestion, temporal slider, animations | Benjy |
+| Presentation Quality | Story-first README, blog post, social posts, 2-min demo video, benchmark chart | All |
 
 ---
 
-## 1. What we're shipping (architecture)
+## 1. Full Architecture
 
 ```
-                ┌─────────────────────────────────────────────┐
-   data/  ──►   │  ingestion pipeline (Sam)                   │
-  (corpus +     │  remember() / add() + cognify()  + status   │
-   hero case)   └───────────────┬─────────────────────────────┘
-                                │
-                    ┌───────────▼────────────┐
-                    │  memory_service.py      │  ← Jesh (core abstraction over Cognee)
-                    │  remember/recall/        │
-                    │  improve/forget          │
-                    └───────┬─────────┬────────┘
-                            │         │
-              ┌─────────────▼──┐   ┌──▼───────────────┐
-              │ FastAPI (Sam)  │   │ benchmark/ (Jesh)│  ← 3-way: naive vs RAG vs GRAPH
-              │ /recall /hunch │   │ recall@k, MRR    │
-              │ /improve /forget│  └──────────────────┘
-              └───────┬─────────┘
-                      │ REST/JSON
-              ┌───────▼──────────────────────────────┐
-              │ React frontend (Benjy)                │
-              │ • live force-graph of the case web    │
-              │ • 3-way split-screen retrieval        │
-              │ • timeline view + expungement toggle  │
-              └───────────────────────────────────────┘
+data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
+         └──────────────┬────────────────────┘
+                scripts/ingest.py
+                remember() / cognify()
+                        │
+              backend/memory_service.py
+              (all 4 Cognee APIs)
+                        │
+              backend/main.py (FastAPI)
+              ┌─────────┴──────────┐
+              │ 13 endpoints        │   benchmark/
+              │ /recall /hunch      │   3-way: naive vs RAG vs GRAPH
+              │ /resolve /expunge   │   Recall@k, MRR, chart.png
+              │ /missing-hours      │
+              │ /nexus /whatif      │
+              │ /interrogation      │
+              │ /ingest-file        │
+              └────────┬────────────┘
+                       │ REST/JSON
+              frontend/ (React + Vite)
+              ┌─────────────────────────────────────┐
+              │ Case Graph (force-graph + legend)    │
+              │ Graph vs Vector (3-col compare)      │
+              │ Timeline (temporal slider)           │
+              │ Missing Hours (info bounty)          │
+              │ Nexus Point (shortest path)          │
+              │ Interrogation Co-Pilot               │
+              │ What-If Sandbox                      │
+              │ Upload (drag-drop ingestion)         │
+              └─────────────────────────────────────┘
 ```
 
-**Stack:** Python 3.11 + Cognee (self-hosted OSS) + FastAPI · React + Vite + a force-graph lib (react-force-graph or Cytoscape.js) · sentence-transformers for the naive baseline · self-hosted graph/vector backends per Cognee defaults (Kuzu/LanceDB or Neo4j+Qdrant if time).
+**Stack:** Python 3.11 · Cognee 1.2.2 (OSS, self-hosted) · lancedb 0.26.0 · fastembed (local embeddings) · FastAPI · React + Vite · react-force-graph-2d · Claude Haiku (via keychain key)
 
 ---
 
-## 2. Roles & ownership
+## 2. Roles
 
-**Three equal owners.** Each pillar independently decides the outcome — there is no "support" role here. A flawless benchmark behind a clumsy UI loses; a beautiful UI with no real Cognee depth loses. We need all three at full strength.
-
-- **Sam (lead · AI/backend):** corpus sourcing + cleaning, hero case authoring, ingestion pipeline (async status polling), FastAPI endpoints, `forget()`/expungement flow, demo orchestration, blog post (side track). Runs standups and keeps the plan on track.
-- **Jesh (AI/backend):** Cognee core integration, `memory_service` abstraction, the benchmark (methodology + harness + chart), the `improve()` self-learning loop, README technical sections, submission form. Owns Priority 0.
-- **Benjy (frontend / product):** the entire user-facing experience — React app, live graph visualization, 3-way comparison UI, timeline + expungement/improve animations, and the 2-min demo video the judges actually watch. Owns how the whole project *reads* (UX + Presentation = 2 of the 6 scoring criteria). Social posts (side track).
-- **Shared:** daily 15-min standup (async on WhatsApp ok), README, final QA.
+- **Sam (lead · AI/backend):** corpus sourcing, hero case, ingestion pipeline, expunge flow, blog post, demo orchestration
+- **Jesh (AI/backend):** Cognee core, memory_service, benchmark, improve() loop, README, submission
+- **Benjy (frontend/product):** all 8 UI panels, temporal slider, drag-drop, 2-min demo video, social posts
 
 ---
 
-## 3. Day-by-day plan (minute-level, with owners)
+## 3. Remaining schedule (Day 2 evening → Day 7)
 
-> Tags: **[JESH] [SAM] [BENJY] [ALL]**. Each task has an estimate. Evenings + big weekend push (everyone's working/college).
-> `[ ]` = todo. Check off in this file as you go (commit it to the repo).
+### Day 2 (TODAY — Jun 30): Build sprint ← WE ARE HERE
+- [x] Priority 0 + smoke test passes
+- [x] Demo.py live end-to-end passes (all 5 phases)
+- [x] Frontend: 3 core panels polished (dark theme, animations)
+- [x] Blog post + social posts + README rewrite
+- [ ] 250-doc noise corpus (66/250 done, agent running)
+- [ ] 5 new backend endpoints (agent running)
+- [ ] 5 new frontend panels + temporal slider (agent running)
+- [ ] Full 3-way benchmark run (agent waiting on corpus)
 
-### DAY 2 — Tue Jun 30 (TODAY): De-risk + foundations  🎯 *Goal: Cognee provably runs, repo stands up, corpus identified*
+### Day 3 (Wed Jul 1): Integration + benchmark
+- [ ] All agents merged + committed
+- [ ] Full benchmark produces results.json + chart.png with real numbers
+- [ ] README + blog updated with real numbers
+- [ ] Backend wired live (run uvicorn + verify all 13 endpoints)
+- [ ] Frontend hitting real backend (not just mock)
+- [ ] improve() before/after metric captured from real run
+- [ ] Sam: source/clean data/raw to 250 docs, SOURCES.md
 
-**Priority 0 — prove the SDK works before anything else [JESH] (~30 min, one command)**
-- [ ] Run **`./setup.sh`** — auto: Python≥3.10 check, venv, `pip install -r requirements.txt`, `.env` scaffold (5 min)
-- [ ] Add `LLM_API_KEY` to `.env` (OpenAI key, or a local/cheaper provider per Cognee setup docs), then `./setup.sh --smoke` (10 min)
-- [ ] Smoke test runs `remember → recall → improve → forget` against the **live** SDK (auto via setup.sh)
-- [ ] **Record the real return shapes** of `recall()` for each search type into `docs/API_NOTES.md` — this is what the old scaffold guessed at; we verify it for real (15 min)
-- [ ] Confirm `improve(session_ids=...)` and `forget(dataset=...)` signatures actually run (12 min)
+### Day 4 (Thu Jul 2): Demo polish
+- [ ] Full integration run-through (all 8 panels, all happy paths)
+- [ ] Dry-run demo.py twice on clean state
+- [ ] ISSUES.md — log any bugs, fix them
+- [ ] Drag-drop ingestion tested live (upload a new doc, see it in graph)
+- [ ] What-If sandbox tested with real what-if scenarios
+- [ ] Nexus point tested between all node pairs
 
-**Repo + skeleton [JESH] (~30 min)**
-- [x] `git init`, push to a **private** GitHub repo `hungover-coldcase`. Add `.gitignore` ✅ pushed to github.com/jeshlin-donna/hungover-coldcase
-- [x] Commit `memory_service.py` skeleton with the 4 APIs + `wait_for_indexing()` status-polling helper ✅
+### Day 5 (Fri Jul 3): Video + final content
+- [ ] Benjy: record 2-min demo video (screen + voiceover)
+  - Script: 23-month hook → ingest → compare (vector vs graph fails → graph wins) → alibi break → interrogation co-pilot → resolve/improve → expunge
+- [ ] Publish blog post
+- [ ] Final README pass (drop placeholder numbers, put real ones)
+- [ ] All: browse Cognee GitHub issues, claim + submit 1-2 real PRs ($100 each)
 
-**Corpus sourcing [SAM] (~90 min)**
-- [ ] Identify 1–2 **public** datasets for the noise corpus: e.g. public police-blotter / incident logs, Crime Data Explorer (FBI), court-record samples, NamUs-style public case summaries. Document license/source in `data/SOURCES.md` (45 min)
-- [ ] Download ~200–500 records into `data/raw/` (30 min)
-- [ ] Sanity-check format; note the fields we'll ingest (date, location, MO, tool marks, vehicle, narrative) (15 min)
+### Day 6 (Sat Jul 4 — load-bearing day): QA + submit
+- [ ] Clean-clone test (fresh venv, follow README, confirm everything works)
+- [ ] Make repo public
+- [ ] Tag v1.0
+- [ ] Fill submission form: repo link, video link, blog link, 4-API writeup, AI disclosure, team
+- [ ] Sam: publish blog; Benjy: publish social posts
+- [ ] Submit early (don't wait for deadline)
 
-**Frontend bootstrap [BENJY] (~60 min)**
-- [x] Vite + React scaffold with `react-force-graph-2d` + fetch client ✅ (done — `frontend/`; Benjy now builds out the panels)
-- [ ] Stub 3 panels (Graph / Retrieval compare / Timeline) with mock JSON so UI dev isn't blocked on backend (45 min)
-
-**EOD Day 2 deliverables:** Cognee verified ✓ · repo live ✓ · corpus chosen + downloaded ✓ · UI skeleton renders ✓
-
----
-
-### DAY 3 — Wed Jul 1: Data + memory core  🎯 *Goal: full corpus ingested and queryable*
-
-**Hero case [SAM] (~75 min)**
-- [ ] Author the Daniel Marsh 3-burglary case files + forensic reports + witness statements (reuse from old scaffold, tighten). Plant them so they're *connectable but not obvious* — same tool-mark dims, vehicle, MO across 2 jurisdictions (60 min)
-- [ ] Add the killer detail: a forensic line *"recommend regional database check — not actioned"* (15 min)
-
-**Ingestion pipeline [SAM] (~90 min)**
-- [ ] `scripts/ingest.py`: load `data/raw/*` + hero case → `remember()`/`add()`+`cognify()` with `run_in_background=True` (60 min)
-- [ ] Poll `datasets.get_status()` until indexed (no blind `sleep`) (30 min)
-
-**memory_service [JESH] (~120 min)**
-- [ ] `recall(query, mode)` wrapper exposing `RAG_COMPLETION`, `GRAPH_COMPLETION`, `INSIGHTS`, `CHUNKS` (45 min)
-- [ ] `log_hunch(text, session_id)` → session memory (`self_improvement=False`) (20 min)
-- [ ] `resolve_case(dataset, session_ids)` → `improve()` bridging session → permanent (25 min)
-- [ ] `expunge(dataset)` → `forget()` (15 min)
-- [ ] Unit-smoke each against live SDK; update `API_NOTES.md` (15 min)
-
-**Graph viz wiring [BENJY] (~120 min)**
-- [ ] Endpoint contract agreed with Jesh/Sam (nodes = entities, edges = relations) (15 min)
-- [ ] Render the live case graph from real ingested data; node click → details panel (105 min)
-
-**EOD Day 3:** corpus + hero case ingested ✓ · all 4 APIs callable via `memory_service` ✓ · graph renders real nodes ✓
+### Day 7 (Sun Jul 5): Buffer
+- [ ] Fix anything broken from QA
+- [ ] Final submission confirmation
 
 ---
 
-### DAY 4 — Thu Jul 2: The benchmark (our moat) + endpoints  🎯 *Goal: numbers that prove graph > vector*
-
-**Benchmark [JESH] (~180 min) — THE differentiator, do it right**
-- [ ] Query set: 25–30 queries in `benchmark/queries.json`, labeled `single_hop` vs `multi_hop`, each with gold relevant doc IDs (60 min)
-- [ ] 3 retrievers: (a) naive cosine (sentence-transformers `all-MiniLM-L6-v2` top-k), (b) Cognee `RAG_COMPLETION`, (c) Cognee `GRAPH_COMPLETION`/`INSIGHTS` (45 min)
-- [ ] Metrics: Recall@3, Recall@5, MRR; + LLM-judged answer correctness for completion modes (45 min)
-- [ ] Output `benchmark/results.json` + a matplotlib chart `benchmark/chart.png` (graph ≈ vector on single-hop, graph **>>** vector on multi-hop) (30 min)
-
-**FastAPI [SAM] (~120 min)**
-- [ ] `/recall` (mode param), `/hunch`, `/resolve`, `/expunge`, `/graph` (nodes+edges), `/benchmark` (serves results) (90 min)
-- [ ] CORS + error handling so the demo never hard-crashes; fallback canned response if a call times out (30 min)
-
-**3-way compare UI [BENJY] (~150 min)**
-- [ ] Split-screen: same query → Naive vector | Cognee RAG | Cognee Graph, side by side (90 min)
-- [ ] Highlight the multi-hop query where only Graph connects the 3 cases (60 min)
-
-**EOD Day 4:** benchmark chart exists with real numbers ✓ · all endpoints live ✓ · 3-way compare works ✓
+## 4. Definition of Done
+- [ ] Public GitHub repo, clean README with story + benchmark chart
+- [ ] All 4 Cognee APIs used and documented
+- [ ] 3-way benchmark: graph > vector on multi-hop (real numbers)
+- [ ] All 8 UI panels functional
+- [ ] 2-min demo video uploaded
+- [ ] AI disclosure in submission
+- [ ] Blog published + social posts live
+- [ ] Clean-clone test passes
 
 ---
 
-### DAY 5 — Fri Jul 3: improve() + forget() live moments + integration  🎯 *Goal: the two "wow" interactions work end-to-end*
+## 5. The 8 agentic modules (from proposal)
 
-- [ ] **[JESH]** `improve()` live loop: query → confirm lead → `improve(session_ids)` → re-query → **show recall/score jump**. Capture the before/after numbers (90 min)
-- [ ] **[SAM]** Expungement flow: seal Marsh's record → `forget(dataset)` → show connected subgraph vanish, unrelated cases intact (75 min)
-- [ ] **[BENJY]** Timeline view (3 incidents across months) + the "improve" and "expunge" buttons wired to endpoints; animate the graph update (150 min)
-- [ ] **[ALL]** First full integration run-through end-to-end; log every bug to `ISSUES.md` (60 min)
-
-**EOD Day 5:** improve() metric visibly climbs ✓ · expungement visibly prunes ✓ · full happy-path runs ✓
-
----
-
-### DAY 6 — Sat Jul 4 (big push): polish + demo video + README + blog  🎯 *Goal: submission-ready*
-
-- [ ] **[JESH]** README: open with the Marsh story → problem → architecture → benchmark chart+table → API usage → setup. Add **AI-assistant disclosure** section (120 min)
-- [ ] **[JESH]** Reproducibility: `make demo` / one-command setup script; test on a clean clone (60 min)
-- [ ] **[SAM]** `demo/demo.py` — the exact 5-phase narrated CLI run (ingest → hunch → multi-hop recall → resolve/improve → expunge) (75 min)
-- [ ] **[SAM]** Blog post draft (side track → Keychron): "How we taught an investigation to remember" — include the benchmark numbers (120 min)
-- [ ] **[BENJY]** UX polish pass (loading states, empty states, the 30-sec hero flow), record **2-min demo video** (screen + voiceover) (180 min)
-- [ ] **[BENJY]** 2–3 social posts tagging @wemakedevs + Cognee (side track → swag) (45 min)
-- [ ] **[ALL]** Dry-run the live demo twice; cut anything that flakes (60 min)
-
-**EOD Day 6:** README done · video recorded · demo bulletproof · blog drafted
+| Module | Endpoint | UI Panel | Cognee API used |
+|---|---|---|---|
+| Messy Desk (ingestion) | POST /ingest-file | UploadPanel | remember() |
+| Dynamic Evidence Board | GET /graph | GraphPanel | recall(GRAPH) |
+| Alibi Collision Engine | GET /contradictions | GraphPanel (red edges) | recall(GRAPH) |
+| Missing Hours | GET /missing-hours | MissingHoursPanel | recall(GRAPH) |
+| Nexus Point | POST /nexus | NexusPanel | recall(GRAPH) |
+| Interrogation Co-Pilot | POST /interrogation | InterrogationPanel | recall(GRAPH) |
+| What-If Sandbox | POST /whatif | WhatIfPanel | recall(GRAPH) |
+| Resolve & Improve | POST /resolve | App.jsx metric card | improve(session_ids) |
 
 ---
 
-### DAY 7 — Sun Jul 5: final QA + submit  🎯 *Goal: submitted with buffer*
-
-- [ ] **[ALL]** Clean-clone test: fresh machine/container, follow README, confirm `make demo` works (60 min)
-- [ ] **[JESH]** Make repo public, final commit, tag `v1.0` (20 min)
-- [ ] **[JESH]** Fill submission form: links (repo, video, blog), 4-API usage writeup, **AI disclosure**, team members (45 min)
-- [ ] **[SAM]** Publish blog; **[BENJY]** publish social posts (30 min)
-- [ ] **[ALL]** Submit **early** (don't wait for the deadline) (15 min)
-- [ ] Buffer for anything broken.
-
----
-
-## 4. Definition of Done / submission checklist
-- [ ] Public GitHub repo, clean README opening with the story + benchmark chart
-- [ ] All 4 Cognee APIs used and *documented* where each is used
-- [ ] Real corpus + benchmark showing graph > vector on multi-hop (chart + table)
-- [ ] 2-min demo video + live demo that runs from a clean clone
-- [ ] AI-assistant usage declared
-- [ ] Disclaimer (synthetic/public data) prominent
-- [ ] Blog published (side track), social posts up (side track)
+## 6. Risk register
+| Risk | Mitigation |
+|---|---|
+| Benchmark shows graph ≈ vector | Design multi-hop queries that structurally need graph traversal; if still weak, lead with relationship-extraction demo |
+| Live demo crashes | Degraded mode serves mock data — demo never hard-crashes |
+| Corpus licensing | Only synthetic/public data; document in SOURCES.md |
+| Time slips | Jul 4 is load-bearing — protect it |
 
 ---
 
-## 5. Risk register
-| Risk | Mitigation | Owner |
-|---|---|---|
-| SDK behaves differently than docs | Priority 0 on Day 2 verifies real return shapes first | Jesh |
-| Benchmark shows graph ≈ vector | Design multi-hop queries that *structurally* need traversal; if still weak, lead with `INSIGHTS`/relationship extraction | Jesh |
-| Live demo crashes | Canned-fallback responses + pre-recorded video backup | Sam/Benjy |
-| Corpus licensing | Only public/synthetic; document sources | Sam |
-| "Predictive policing" optics | Strict "connect existing evidence" framing + disclaimer | All |
-| Time slips (everyone busy) | Weekend (Jul 4) is the load-bearing day; protect it | All |
+## 7. Side tracks
+- **Blog post** ($100 Keychron): docs/blog_post.md → publish on Medium/Dev.to by Jul 4
+- **Social posts** (swag): docs/social_posts.md → tag @wemakedevs + @cognee_ai on submission day
+- **Cognee PRs** ($100 each, max 5/person): browse topoteretes/cognee issues, claim, submit real PRs
 
 ---
 
-## 6. Parallel track — Open Source PRs ($100 each, top 20) — START NOW
-Stacks on top of the main prize. **Max 5 PRs/person**, no spam, no typo-only PRs (instant reject + ban risk).
-- [ ] **[ALL]** Each: browse `github.com/topoteretes/cognee` issues, comment to claim, **wait for assignment** before coding
-- [ ] **[JESH/SAM]** Target Python core / SDK / docs-with-code issues (our strength)
-- [ ] **[BENJY]** Target JS integrations / docs / examples issues
-- [ ] Aim 1–2 *real* PRs each this week around the build work (things we touch anyway → natural fixes)
-
----
-
-## 7. Naming / submission copy
+## 8. Submission copy
 - **Team:** HungOver
-- **Product:** Cold Case Connector *(working name — alt: "Throughline", "Coldwire")*
+- **Product:** Cold Case Connector
 - **One-liner:** "Every detective had a piece of the evidence. Nobody had the shared memory to connect it. Cognee does."
-- **Tagline:** Built on self-hosted, open-source Cognee — the memory layer that doesn't wake up in Vegas with no memory of last night.
-
----
-
-## 8. Stretch goals (build ONLY after Tier 0 core is live)
-> Discipline: the core graph-beats-vector demo must run live once before any of this. Don't let stretch work block Priority 0.
-- **✅ Tier 1 — Alibi Break (DONE):** a contradiction view. Marsh's "out of state" alibi vs a motel record 4.2mi from the scene → glowing red line. **Honest framing: Cognee builds the graph; the contradiction check is our logic** (we never claim Cognee auto-detects contradictions). Live confirm-via-`recall()` is a TODO in `backend/main.py`.
-- **Tier 2 — Multi-modal ingestion:** evidence photo → vision LLM (gpt-4o) → structured text → `remember()`. High wow; **pre-bake it, never run vision live on stage** (slow/flaky). [SAM]
-- **Tier 3 — Drag-and-drop drop-zone** ingestion UI. Nice UX, not core. [BENJY]
+- **AI disclosure:** Built with Claude Code (Anthropic) for code generation and documentation. All AI usage declared per hackathon rules.

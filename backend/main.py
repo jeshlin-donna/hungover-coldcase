@@ -16,7 +16,7 @@ import json
 import re
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -76,6 +76,18 @@ class ResolveReq(BaseModel):
 
 class ExpungeReq(BaseModel):
     dataset: str = "case:RV-0788"
+
+class NexusReq(BaseModel):
+    from_node: str = "suspect:daniel-marsh"
+    to_node: str = "case:RV-0788"
+
+class InterrogationReq(BaseModel):
+    suspect_id: str = "suspect:daniel-marsh"
+    focus_case: str = "case:RV-0788"
+
+class WhatIfReq(BaseModel):
+    hypothesis: str
+    inject_edge: dict = {}
 
 
 # --- routes (match API_CONTRACT.md) ------------------------------------------
@@ -168,3 +180,237 @@ async def expunge(req: ExpungeReq):
     g["edges"] = [e for e in g["edges"]
                   if e["source"] not in removed and e["target"] not in removed]
     return {"ok": True, "removed": removed, "graph": g}
+
+
+# --- new endpoints -----------------------------------------------------------
+
+@app.get("/missing-hours")
+async def missing_hours():
+    payload = {
+        "suspect": "Daniel R. Marsh",
+        "gaps": [
+            {
+                "id": "gap-001",
+                "start": "2023-03-03T01:30:00",
+                "end": "2023-03-03T04:00:00",
+                "duration_hours": 2.5,
+                "label": "Night of MH-2023-0312 burglary",
+                "urgency": "high",
+                "recommendation": "Pull CCTV from Maple Heights Commercial District (cameras on Oak & 3rd). Request cell tower data for Clearwater County towers.",
+                "nearby_events": ["MH-2023-0312 occurred 02:15", "Witness saw dark sedan 02:30"]
+            },
+            {
+                "id": "gap-002",
+                "start": "2023-11-18T22:00:00",
+                "end": "2023-11-19T06:00:00",
+                "duration_hours": 8.0,
+                "label": "Night of RV-2023-0788 — alibi contradicted",
+                "urgency": "critical",
+                "recommendation": "Alibi already broken by card records. Request full cell tower log for Hale County 2023-11-18 22:00 – 2023-11-19 06:00. Subpoena motel check-in video.",
+                "nearby_events": [
+                    "Card record: fuel purchase 23:31 (6.1mi from scene)",
+                    "Card record: motel check-in 00:48 (4.2mi from scene)",
+                    "RV-2023-0788 occurred ~02:00"
+                ]
+            },
+            {
+                "id": "gap-003",
+                "start": "2025-02-03T23:00:00",
+                "end": "2025-02-04T04:00:00",
+                "duration_hours": 5.0,
+                "label": "Night of MH-2025-0102 — no alibi provided",
+                "urgency": "high",
+                "recommendation": "No alibi offered for this night. Pull residential camera data from Maple Heights Court area. Request phone records.",
+                "nearby_events": ["MH-2025-0102 occurred ~01:15", "Neighbor reported noise ~01:20"]
+            }
+        ],
+        "total_gaps": 3,
+        "critical_gaps": 1,
+        "note": "Information bounty: closing gap-002 with cell tower data would establish physical presence at scene."
+    }
+    if LIVE:
+        res = await mem.recall(
+            "What are the known gaps in Daniel Marsh's timeline and alibi?",
+            mode=mem.RecallMode.GRAPH,
+            dataset=DATASET
+        )
+        payload["cognee_insight"] = res.answer
+    return payload
+
+
+@app.post("/nexus")
+async def nexus(req: NexusReq):
+    # Static mock paths keyed by (from_node, to_node)
+    mock_paths: dict[tuple[str, str], dict] = {
+        ("suspect:daniel-marsh", "case:RV-0788"): {
+            "from": "suspect:daniel-marsh",
+            "to": "case:RV-0788",
+            "path": [
+                {"node": "suspect:daniel-marsh", "label": "Daniel R. Marsh"},
+                {"edge": "possessed", "weight": "verified"},
+                {"node": "tool:pry-8mm", "label": "Pry bar · 8mm · left-edge nick"},
+                {"edge": "tool_used", "weight": "forensic"},
+                {"node": "case:RV-0788", "label": "RV-2023-0788"}
+            ],
+            "hops": 2,
+            "strength": "strong",
+            "narrative": "Marsh possessed the pry bar (verified — recovered from his garage) → same tool forensically matched to the Riverside scene."
+        },
+        ("jur:maple-heights", "jur:riverside"): {
+            "from": "jur:maple-heights",
+            "to": "jur:riverside",
+            "path": [
+                {"node": "jur:maple-heights", "label": "Maple Heights Jurisdiction"},
+                {"edge": "tool_used", "weight": "forensic"},
+                {"node": "tool:pry-8mm", "label": "Pry bar · 8mm · left-edge nick"},
+                {"edge": "tool_used", "weight": "forensic"},
+                {"node": "jur:riverside", "label": "Riverside Jurisdiction"}
+            ],
+            "hops": 2,
+            "strength": "strong",
+            "narrative": "The same pry bar (8mm nick) links crimes across both jurisdictions — the cross-jurisdiction thread."
+        },
+        ("alibi:marsh-nov19", "case:RV-0788"): {
+            "from": "alibi:marsh-nov19",
+            "to": "case:RV-0788",
+            "path": [
+                {"node": "alibi:marsh-nov19", "label": "Marsh alibi — night of Nov 18-19"},
+                {"edge": "contradicted_by", "weight": "verified"},
+                {"node": "receipt:marsh-nov19", "label": "Card records: fuel + motel near scene"},
+                {"edge": "places_suspect_at", "weight": "forensic"},
+                {"node": "case:RV-0788", "label": "RV-2023-0788"}
+            ],
+            "hops": 2,
+            "strength": "strong",
+            "narrative": "The alibi (Marsh claims he was 300 miles away) is directly contradicted by card records that place him within 4-6 miles of the Riverside scene that night."
+        }
+    }
+
+    key = (req.from_node, req.to_node)
+    result = mock_paths.get(key, {
+        "from": req.from_node,
+        "to": req.to_node,
+        "path": [],
+        "hops": 0,
+        "strength": "unknown",
+        "narrative": f"No known path from {req.from_node} to {req.to_node} in the current graph."
+    })
+
+    if LIVE:
+        res = await mem.recall(
+            f"What connects {req.from_node} to {req.to_node}?",
+            mode=mem.RecallMode.GRAPH,
+            dataset=DATASET
+        )
+        result["cognee_insight"] = res.answer
+
+    return result
+
+
+@app.post("/interrogation")
+async def interrogation(req: InterrogationReq):
+    payload = {
+        "suspect": "Daniel R. Marsh",
+        "focus_case": "RV-2023-0788",
+        "strategy": "Lead with the card records. He doesn't know we have the motel receipt. The alibi collapses on the second question.",
+        "questions": [
+            {
+                "id": "q1",
+                "question": "Mr. Marsh, where were you on the night of November 18th into the 19th, 2023?",
+                "type": "open",
+                "expected_lie": "Claims to be 300 miles away in Pineford",
+                "trap": None,
+                "evidence_held_back": "Card records, motel receipt"
+            },
+            {
+                "id": "q2",
+                "question": "Can you explain this card transaction — a fuel purchase in Hale County at 11:31 PM on November 18th?",
+                "type": "confrontation",
+                "expected_lie": "Denial or 'someone else used my card'",
+                "trap": "Follow up: 'And the motel check-in at 12:48 AM, 4.2 miles from 902 Riverside Lane?'",
+                "evidence_held_back": None
+            },
+            {
+                "id": "q3",
+                "question": "Tell me about the tools you keep in your garage — specifically any pry bars.",
+                "type": "fishing",
+                "expected_lie": "Claims no pry bars / doesn't know what we found",
+                "trap": "We have the tool recovered. Ask him to explain why its blade matches all three scenes.",
+                "evidence_held_back": "Tool match forensics"
+            },
+            {
+                "id": "q4",
+                "question": "Do you know anyone who drives a dark blue Honda Accord, partial plate 8K?",
+                "type": "fishing",
+                "expected_lie": "Denial",
+                "trap": "DMV records show he registered a 2016 Honda Accord in that color range.",
+                "evidence_held_back": "Vehicle registration"
+            }
+        ],
+        "weak_edges": [
+            "alibi:marsh-nov19 (unverified — contradicted by card records)",
+            "vehicle ownership (not yet confirmed in record)"
+        ],
+        "cognee_insight": None
+    }
+
+    if LIVE:
+        res = await mem.recall(
+            f"What are the weakest claims and best interrogation angles for Daniel Marsh regarding {req.focus_case}?",
+            mode=mem.RecallMode.GRAPH,
+            dataset=DATASET
+        )
+        payload["cognee_insight"] = res.answer
+
+    return payload
+
+
+@app.post("/whatif")
+async def whatif(req: WhatIfReq):
+    payload = {
+        "hypothesis": req.hypothesis,
+        "injected_edge": req.inject_edge,
+        "impact": "moderate",
+        "recalculated_scores": {
+            "suspect:daniel-marsh": {
+                "before": 0.87,
+                "after": 0.79,
+                "delta": -0.08,
+                "reason": "Vehicle witness testimony weakened; forensic tool match still holds"
+            },
+            "vehicle:blue-sedan": {
+                "before": 0.91,
+                "after": 0.61,
+                "delta": -0.30,
+                "reason": "If C is lying, sedan sighting confidence drops"
+            }
+        },
+        "narrative": "Even without Witness C's testimony, the forensic tool match (8mm nick) and card records place Marsh at the scene. The vehicle sighting becomes circumstantial but the physical evidence chain is intact.",
+        "recommended_next": "Verify vehicle registration independently — don't rely on Witness C's description.",
+        "cognee_insight": None
+    }
+
+    if LIVE:
+        res = await mem.recall(
+            req.hypothesis,
+            mode=mem.RecallMode.GRAPH,
+            dataset=DATASET
+        )
+        payload["cognee_insight"] = res.answer
+
+    return payload
+
+
+@app.post("/ingest-file")
+async def ingest_file(file: UploadFile = File(...)):
+    content = await file.read()
+    text = content.decode("utf-8", errors="ignore")
+    if LIVE:
+        await mem.remember(text, dataset=DATASET)
+    return {
+        "ok": True,
+        "filename": file.filename,
+        "size_bytes": len(content),
+        "dataset": DATASET,
+        "mode": "live" if LIVE else "degraded"
+    }
