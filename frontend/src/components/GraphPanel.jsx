@@ -33,7 +33,7 @@ function withoutNode(graph, nodeId) {
   };
 }
 
-export default function GraphPanel() {
+export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
   const [graph, setGraph] = useState({ nodes: [], edges: [], contradictions: [] });
   const [reveal, setReveal] = useState(false);
   const [expunging, setExpunging] = useState(false);
@@ -42,11 +42,17 @@ export default function GraphPanel() {
   const fgRef = useRef();
 
   useEffect(() => {
-    api.graph().then(setGraph).catch(() => {
-      // Fallback to embedded mock so the graph renders even offline.
-      setGraph(MOCK_GRAPH);
-    });
-  }, []);
+    if (graphData) {
+      setGraph(graphData);
+    } else {
+      api.graph().then((g) => {
+        setGraph(g);
+        onGraphLoaded?.(g);
+      }).catch(() => {
+        setGraph(MOCK_GRAPH);
+      });
+    }
+  }, [graphData]);
 
   const data = useMemo(() => {
     const links = graph.edges.map((e) => ({
@@ -142,6 +148,18 @@ export default function GraphPanel() {
           onNodeClick={handleNodeClick}
           nodeCanvasObjectMode={() => "after"}
           nodeCanvasObject={(node, ctx, globalScale) => {
+            // Green halo when justImproved
+            if (justImproved) {
+              ctx.save();
+              ctx.beginPath();
+              ctx.arc(node.x, node.y, 10, 0, 2 * Math.PI);
+              ctx.strokeStyle = "rgba(63,185,80,0.85)";
+              ctx.lineWidth = 3;
+              ctx.shadowColor = "#3fb950";
+              ctx.shadowBlur = 12;
+              ctx.stroke();
+              ctx.restore();
+            }
             const label = node.label || node.id;
             const fontSize = Math.max(10 / globalScale, 2);
             ctx.font = `${fontSize}px ui-sans-serif,system-ui,sans-serif`;
