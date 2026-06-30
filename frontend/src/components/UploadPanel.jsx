@@ -46,7 +46,7 @@ const ingestionLabels = {
   text: "Ingesting…",
 };
 
-export default function UploadPanel() {
+export default function UploadPanel({ onGraphUpdated }) {
   const [dragging, setDragging] = useState(false);
   const [pending, setPending] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -107,6 +107,7 @@ export default function UploadPanel() {
         ...prev,
       ]);
       setPending(null);
+      onGraphUpdated?.();
     } catch {
       setIngestedFiles((prev) => [
         {

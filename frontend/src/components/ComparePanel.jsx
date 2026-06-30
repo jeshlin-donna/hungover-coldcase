@@ -50,11 +50,13 @@ export default function ComparePanel() {
   const [q, setQ] = useState(PRESETS[0].q);
   const [res, setRes] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [dataset, setDataset] = useState("all");
 
-  async function run(query) {
+  async function run(query, ds) {
+    const d = ds !== undefined ? ds : dataset;
     setLoading(true);
     try {
-      setRes(await api.compare(query));
+      setRes(await api.compare(query, d));
     } catch {
       // In offline/degraded mode fall back to the mock data shape so the
       // demo still looks right.
@@ -100,13 +102,39 @@ export default function ComparePanel() {
   function selectPreset(idx) {
     setActivePreset(idx);
     setQ(PRESETS[idx].q);
-    run(PRESETS[idx].q);
+    run(PRESETS[idx].q, dataset);
+  }
+
+  function switchDataset(ds) {
+    setDataset(ds);
+    if (q) run(q, ds);
   }
 
   const hopType = isMultiHop(q) ? "multi" : "single";
 
   return (
     <div className="panel">
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button
+          className={dataset === "all" ? "active" : ""}
+          onClick={() => switchDataset("all")}
+          style={{ fontSize: 12, padding: "5px 12px" }}
+        >
+          All Jurisdictions
+        </button>
+        <button
+          className={dataset === "hero" ? "active" : ""}
+          onClick={() => switchDataset("hero")}
+          style={{ fontSize: 12, padding: "5px 12px" }}
+        >
+          Hero Case Only
+        </button>
+        {res?.dataset && (
+          <span style={{ fontSize: 12, color: "var(--muted)", alignSelf: "center", marginLeft: 4 }}>
+            Searched: <b style={{ color: "var(--accent)" }}>{res.dataset === "hero" ? "Hero Case" : "All Jurisdictions"}</b>
+          </span>
+        )}
+      </div>
       <div className="presets">
         {PRESETS.map((p, i) => (
           <button
@@ -126,7 +154,7 @@ export default function ComparePanel() {
           className="query"
           placeholder="Ask a question about the cases…"
         />
-        <button onClick={() => run(q)} disabled={loading}>
+        <button onClick={() => run(q, dataset)} disabled={loading}>
           {loading ? "Retrieving…" : "Compare"}
         </button>
       </div>

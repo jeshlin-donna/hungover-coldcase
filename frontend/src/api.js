@@ -24,7 +24,7 @@ export const api = {
   timeline: () => get("/timeline"),
   contradictions: () => get("/contradictions"),
   benchmark: () => get("/benchmark"),
-  compare: (query) => get(`/recall/compare?query=${encodeURIComponent(query)}`),
+  compare: (query, dataset = "all") => get(`/recall/compare?query=${encodeURIComponent(query)}&dataset=${dataset}`),
   recall: (query, mode) => post("/recall", { query, mode }),
   hunch: (text, session_id) => post("/hunch", { text, session_id }),
   resolve: (session_ids) => post("/resolve", { session_ids }),
@@ -38,4 +38,7 @@ export const api = {
     fd.append("file", file);
     return fetch(`${BASE}/ingest-file`, { method: "POST", body: fd }).then((r) => r.json());
   },
+  chat: (message, history) => post("/chat", { message, history }),
+  report: () => get("/report"),
+  suspectTimeline: (suspect = "daniel-marsh") => get(`/suspect-timeline?suspect=${encodeURIComponent(suspect)}`),
 };

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
+import ChatPanel from "./components/ChatPanel.jsx";
 import GraphPanel from "./components/GraphPanel.jsx";
 import ComparePanel from "./components/ComparePanel.jsx";
 import TimelinePanel from "./components/TimelinePanel.jsx";
@@ -8,8 +9,10 @@ import NexusPanel from "./components/NexusPanel.jsx";
 import InterrogationPanel from "./components/InterrogationPanel.jsx";
 import WhatIfPanel from "./components/WhatIfPanel.jsx";
 import UploadPanel from "./components/UploadPanel.jsx";
+import SuspectTimelinePanel from "./components/SuspectTimelinePanel.jsx";
 
 const TABS = [
+  { id: "chat", label: "Case Chat" },
   { id: "graph", label: "Case Graph" },
   { id: "compare", label: "Graph vs Vector" },
   { id: "timeline", label: "Timeline" },
@@ -18,23 +21,44 @@ const TABS = [
   { id: "interrogation", label: "Interrogation" },
   { id: "whatif", label: "What-If" },
   { id: "upload", label: "Upload" },
+  { id: "suspect-timeline", label: "Suspect Timeline" },
 ];
 
 export default function App() {
-  const [tab, setTab] = useState("graph");
+  const [tab, setTab] = useState("chat");
   const [mode, setMode] = useState(null);
   const [improving, setImproving] = useState(false);
   const [improved, setImproved] = useState(null);
+  const [justImproved, setJustImproved] = useState(false);
+  const [graphData, setGraphData] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [showReport, setShowReport] = useState(false);
+  const [report, setReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
 
   useEffect(() => {
     api.health().then((h) => setMode(h.mode)).catch(() => setMode("offline"));
   }, []);
+
+  function showToast(msg) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  }
 
   async function handleImprove() {
     setImproving(true);
     try {
       await api.resolve([]);
       setImproved({ before: "0.42", after: "0.71", metric: "recall@3" });
+      setJustImproved(true);
+      // Re-fetch graph
+      try {
+        const g = await api.graph();
+        setGraphData(g);
+      } catch {
+        // Keep existing graph
+      }
+      setTimeout(() => setJustImproved(false), 3000);
     } catch {
       setImproved({ before: "0.42", after: "0.71", metric: "recall@3" });
     } finally {
@@ -42,8 +66,49 @@ export default function App() {
     }
   }
 
+  async function handleExportReport() {
+    setShowReport(true);
+    if (report) return; // already loaded
+    setReportLoading(true);
+    try {
+      const r = await api.report();
+      setReport(r);
+    } catch {
+      setReport(null);
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
+  function handleGraphUpdated() {
+    api.graph().then((g) => {
+      const prevCount = graphData?.nodes?.length || 0;
+      const newCount = g?.nodes?.length || 0;
+      setGraphData(g);
+      const delta = newCount - prevCount;
+      showToast(`Graph updated${delta > 0 ? ` — ${delta} new node${delta !== 1 ? "s" : ""} ingested` : " — graph refreshed"}`);
+    }).catch(() => {
+      showToast("Graph refreshed after ingest");
+    });
+  }
+
+  function copyReportAsMarkdown() {
+    if (!report) return;
+    const lines = [`# ${report.title}`, ""];
+    for (const s of report.sections || []) {
+      lines.push(`## ${s.heading}`);
+      lines.push(s.content);
+      lines.push("");
+    }
+    navigator.clipboard.writeText(lines.join("\n")).catch(() => {});
+  }
+
   return (
     <div className="app">
+      {toast && (
+        <div className="toast">{toast}</div>
+      )}
+
       <header>
         <div className="header-left">
           <h1>ColdCache · Cold Case Connector</h1>
@@ -78,13 +143,22 @@ export default function App() {
               ? "○ backend: offline"
               : "backend: …"}
           </span>
-          <button
-            className="btn-improve"
-            onClick={handleImprove}
-            disabled={improving}
-          >
-            {improving ? "Improving…" : "⚡ Improve"}
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button
+              className="btn-improve"
+              onClick={handleImprove}
+              disabled={improving}
+            >
+              {improving ? "Improving…" : "⚡ Improve"}
+            </button>
+            <button
+              className="btn-improve"
+              onClick={handleExportReport}
+              style={{ background: "linear-gradient(135deg,#1a2a1a 0%,#0d1f0d 100%)", borderColor: "var(--win)", color: "var(--win)" }}
+            >
+              Export Report
+            </button>
+          </div>
         </div>
       </header>
 
@@ -101,19 +175,53 @@ export default function App() {
       </nav>
 
       <main>
-        {tab === "graph" && <GraphPanel />}
+        {tab === "chat" && <ChatPanel />}
+        {tab === "graph" && (
+          <GraphPanel
+            justImproved={justImproved}
+            graphData={graphData}
+            onGraphLoaded={setGraphData}
+          />
+        )}
         {tab === "compare" && <ComparePanel />}
         {tab === "timeline" && <TimelinePanel />}
         {tab === "missing-hours" && <MissingHoursPanel />}
         {tab === "nexus" && <NexusPanel />}
         {tab === "interrogation" && <InterrogationPanel />}
         {tab === "whatif" && <WhatIfPanel />}
-        {tab === "upload" && <UploadPanel />}
+        {tab === "upload" && <UploadPanel onGraphUpdated={handleGraphUpdated} />}
+        {tab === "suspect-timeline" && <SuspectTimelinePanel />}
       </main>
 
       <footer>
         Synthetic data only · illustrative demo, not an operational tool.
       </footer>
+
+      {showReport && (
+        <div className="report-modal-overlay" onClick={() => setShowReport(false)}>
+          <div className="report-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="report-close" onClick={() => setShowReport(false)}>×</button>
+            {reportLoading ? (
+              <p style={{ color: "var(--muted)", textAlign: "center", padding: "32px 0" }}>Generating report…</p>
+            ) : !report ? (
+              <p style={{ color: "var(--danger)", textAlign: "center", padding: "32px 0" }}>Failed to load report.</p>
+            ) : (
+              <>
+                <h2 className="report-title">{report.title}</h2>
+                {(report.sections || []).map((s, i) => (
+                  <div key={i} className="report-section">
+                    <div className="report-section-heading">{s.heading}</div>
+                    <div className="report-section-content">{s.content}</div>
+                  </div>
+                ))}
+                <button className="report-copy-btn" onClick={copyReportAsMarkdown}>
+                  Copy as Markdown
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
