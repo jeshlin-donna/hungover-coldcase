@@ -125,11 +125,11 @@ export default function App() {
 
       <header>
         <div className="header-left">
-          <h1>ColdCache · Cold Case Connector</h1>
-          <p className="tag">
-            Every detective had a piece of the evidence. Nobody had the shared
-            memory to connect it. Cognee does.
-          </p>
+          <div className="header-logo">🔍</div>
+          <div className="header-title-group">
+            <h1>ColdCache · Cold Case Connector</h1>
+            <span className="header-case-label">CASE FILE: MARSH-0001 · MILLBROOK / RIVERSIDE · ACTIVE</span>
+          </div>
 
           {improved && (
             <div className="metric-card">
