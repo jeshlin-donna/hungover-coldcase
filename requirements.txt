@@ -9,3 +9,8 @@ fastapi
 uvicorn[standard]
 python-dotenv
 matplotlib                 # benchmark chart
+openai-whisper             # local audio transcription (tiny model, ~75MB)
+opencv-python-headless     # video frame extraction
+pymupdf                    # PDF text extraction + scanned page rendering
+pandas                     # spreadsheet parsing
+openpyxl                   # Excel support for pandas

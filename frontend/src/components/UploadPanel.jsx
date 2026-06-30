@@ -1,8 +1,11 @@
 import { useRef, useState, useEffect } from "react";
 import { api } from "../api.js";
 
-const ACCEPTED = ".txt,.pdf,.md,.jpg,.jpeg,.png,.gif,.webp";
+const ACCEPTED = ".txt,.pdf,.md,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.m4a,.ogg,.aac,.mp4,.mov,.avi,.webm,.xlsx,.xls,.csv";
 const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "gif", "webp"]);
+const AUDIO_EXTS = new Set(["mp3", "wav", "m4a", "ogg", "aac"]);
+const VIDEO_EXTS = new Set(["mp4", "mov", "avi", "webm"]);
+const SPREADSHEET_EXTS = new Set(["xlsx", "xls", "csv"]);
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -10,16 +13,38 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function isImage(filename) {
-  return IMAGE_EXTS.has((filename || "").split(".").pop().toLowerCase());
+function getModality(filename) {
+  const ext = (filename || "").split(".").pop().toLowerCase();
+  if (IMAGE_EXTS.has(ext)) return "image";
+  if (AUDIO_EXTS.has(ext)) return "audio";
+  if (VIDEO_EXTS.has(ext)) return "video";
+  if (SPREADSHEET_EXTS.has(ext)) return "spreadsheet";
+  if (ext === "pdf") return "pdf";
+  return "text";
 }
 
 function fileIcon(name) {
-  if (isImage(name)) return "🖼️";
-  if (name.endsWith(".pdf")) return "📄";
-  if (name.endsWith(".md")) return "📝";
-  return "📃";
+  const m = getModality(name);
+  return { image: "🖼️", audio: "🎙️", video: "🎬", spreadsheet: "📊", pdf: "📄", text: "📃" }[m] || "📃";
 }
+
+const modalityHints = {
+  image: "image → Claude vision → graph",
+  audio: "audio → Whisper transcript → graph",
+  video: "video → keyframes → Claude vision → graph",
+  pdf: "PDF → text/OCR extraction → graph",
+  spreadsheet: "spreadsheet → structured text → graph",
+  text: "",
+};
+
+const ingestionLabels = {
+  image: "Analyzing image…",
+  audio: "Transcribing audio…",
+  video: "Extracting frames…",
+  pdf: "Extracting PDF…",
+  spreadsheet: "Parsing spreadsheet…",
+  text: "Ingesting…",
+};
 
 export default function UploadPanel() {
   const [dragging, setDragging] = useState(false);
@@ -30,7 +55,7 @@ export default function UploadPanel() {
   const inputRef = useRef();
 
   useEffect(() => {
-    if (pending && isImage(pending.name)) {
+    if (pending && getModality(pending.name) === "image") {
       const url = URL.createObjectURL(pending);
       setPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
@@ -75,7 +100,7 @@ export default function UploadPanel() {
           size: pending.size,
           mode: res?.mode || "degraded",
           type: res?.type || "text",
-          imageDescription: res?.image_description || null,
+          description: res?.description || null,
           timestamp: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
           status: "success",
         },
@@ -88,8 +113,8 @@ export default function UploadPanel() {
           name: pending.name,
           size: pending.size,
           mode: "degraded",
-          type: isImage(pending.name) ? "image" : "text",
-          imageDescription: null,
+          type: getModality(pending.name),
+          description: null,
           timestamp: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
           status: "success",
         },
@@ -134,8 +159,12 @@ export default function UploadPanel() {
         {!pending ? (
           <div className="drop-zone-inner">
             <div className="drop-icon">📁</div>
-            <p className="drop-main">Drop case files or images here or click to browse</p>
-            <p className="drop-sub">Text: .txt · .pdf · .md &nbsp;|&nbsp; Images: .jpg · .png · .gif · .webp</p>
+            <p className="drop-main">Drop case files here or click to browse</p>
+            <p className="drop-sub">
+              Text: .txt · .pdf · .md &nbsp;|&nbsp; Images: .jpg · .png · .webp &nbsp;|&nbsp;
+              Audio: .mp3 · .wav · .m4a &nbsp;|&nbsp; Video: .mp4 · .mov &nbsp;|&nbsp;
+              Data: .xlsx · .csv
+            </p>
           </div>
         ) : (
           <div className="drop-pending" onClick={(e) => e.stopPropagation()}>
@@ -151,14 +180,14 @@ export default function UploadPanel() {
                 <span className="pending-name">{pending.name}</span>
                 <span className="pending-size">
                   {formatBytes(pending.size)}
-                  {isImage(pending.name) && " · image → vision analysis → graph"}
+                  {modalityHints[getModality(pending.name)] && ` · ${modalityHints[getModality(pending.name)]}`}
                 </span>
               </div>
             </div>
             <div className="pending-actions">
               <button className="upload-btn" onClick={uploadFile} disabled={uploading}>
                 {uploading
-                  ? isImage(pending.name) ? "Analyzing image…" : "Ingesting…"
+                  ? (ingestionLabels[getModality(pending.name)] || "Ingesting…")
                   : "Ingest into graph"}
               </button>
               <button className="dismiss-btn" onClick={dismiss} disabled={uploading}>
@@ -180,12 +209,12 @@ export default function UploadPanel() {
                   <span className="ingested-name">{f.name}</span>
                   <span className="ingested-detail">
                     {formatBytes(f.size)} · {f.timestamp}
-                    {f.type === "image" && " · image → vision extracted"}
+                    {f.type && f.type !== "text" && ` · ${f.type} extracted`}
                   </span>
-                  {f.imageDescription && (
+                  {f.description && (
                     <div className="image-description-box">
-                      <span className="image-description-label">Vision extraction:</span>
-                      <p className="image-description-text">{f.imageDescription}</p>
+                      <span className="image-description-label">{f.type} extraction:</span>
+                      <p className="image-description-text">{f.description}</p>
                     </div>
                   )}
                 </div>
@@ -199,10 +228,12 @@ export default function UploadPanel() {
       )}
 
       <div className="upload-note">
-        Files are added to the active Cognee knowledge graph via{" "}
+        All file types flow into Cognee via{" "}
         <code style={{ fontFamily: "ui-monospace,monospace", fontSize: 12 }}>remember()</code>.
-        Graph nodes and edges are extracted automatically. Query the new content immediately via
-        Graph vs Vector or the Nexus panel.
+        Images use Claude vision · Audio uses Whisper · Video extracts keyframes · PDFs extract
+        text (vision fallback for scanned pages) · Spreadsheets parse to structured text. Graph
+        nodes and edges are extracted automatically — query immediately via Graph vs Vector or the
+        Nexus panel.
       </div>
     </div>
   );
