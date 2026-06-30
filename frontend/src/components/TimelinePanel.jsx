@@ -54,6 +54,33 @@ const INCIDENTS = [
   },
 ];
 
+// Date range for the slider: 2023-01-01 to 2025-12-31 by month
+const SLIDER_MIN_YEAR = 2023;
+const SLIDER_MIN_MONTH = 0; // January = 0
+const SLIDER_MAX_YEAR = 2025;
+const SLIDER_MAX_MONTH = 11; // December = 11
+
+function monthIndexToDate(idx) {
+  // idx 0 = Jan 2023, idx 35 = Dec 2025
+  const year = SLIDER_MIN_YEAR + Math.floor(idx / 12);
+  const month = idx % 12;
+  return new Date(year, month, 1);
+}
+
+function totalMonths() {
+  const minIdx = SLIDER_MIN_YEAR * 12 + SLIDER_MIN_MONTH;
+  const maxIdx = SLIDER_MAX_YEAR * 12 + SLIDER_MAX_MONTH;
+  return maxIdx - minIdx;
+}
+
+function formatSliderDate(d) {
+  return d.toLocaleString("en-US", { month: "short", year: "numeric" });
+}
+
+function incidentDate(inc) {
+  return new Date(inc.date);
+}
+
 function jurBadgeClass(jurKey) {
   if (jurKey === "clearwater") return "jur-badge jur-clearwater";
   if (jurKey === "hale") return "jur-badge jur-hale";
@@ -66,18 +93,30 @@ function jurLabel(jurKey) {
   return "Maple Heights PD";
 }
 
-export default function TimelinePanel() {
+// timeFilter: a Date object — show incidents at or before this date
+export default function TimelinePanel({ timeFilter }) {
   const [events, setEvents] = useState(null);
+  const [sliderIdx, setSliderIdx] = useState(totalMonths()); // start at max
 
   useEffect(() => {
-    api.timeline()
+    api
+      .timeline()
       .then((d) => setEvents(d.events))
       .catch(() => setEvents(INCIDENTS));
   }, []);
 
-  // Use our enriched static data for display — events from the API confirm
-  // the data is present, but INCIDENTS has the richer fields.
-  const incidents = INCIDENTS;
+  const maxIdx = totalMonths();
+  const sliderDate = monthIndexToDate(sliderIdx);
+
+  // If a timeFilter prop is passed use it, otherwise use internal slider
+  const cutoffDate = timeFilter || sliderDate;
+
+  // Filter incidents: show only those at or before cutoff
+  const visibleIncidents = INCIDENTS.filter(
+    (inc) => incidentDate(inc) <= cutoffDate
+  );
+
+  const isFiltered = sliderIdx < maxIdx || timeFilter;
 
   return (
     <div className="panel timeline-panel">
@@ -93,49 +132,95 @@ export default function TimelinePanel() {
         </div>
       </div>
 
-      <div className="timeline-track">
-        <div className="timeline-line" />
-        <div className="timeline-incidents">
-          {incidents.map((inc, i) => (
-            <div key={i} className="incident">
-              <div className="incident-dot-wrap">
-                <div className={`incident-dot ${inc.dotClass}`} />
-                <div className="incident-stem" />
-              </div>
-
-              <div className={`incident-card${inc.isArrest ? " arrest" : ""}`}>
-                <div className="incident-date">{inc.date}</div>
-                <div className="incident-case">{inc.case}</div>
-                <span className={jurBadgeClass(inc.jurKey)}>{jurLabel(inc.jurKey)}</span>
-                <div className="incident-title">{inc.title}</div>
-                <div className="incident-summary">{inc.summary}</div>
-
-                {inc.tool && (
-                  <div className="incident-tool">
-                    <span style={{ color: "var(--gold)" }}>⚒</span>
-                    <span>{inc.tool}</span>
-                  </div>
-                )}
-
-                {inc.taken && (
-                  <div className="incident-tool">
-                    <span style={{ color: "var(--muted)" }}>↗</span>
-                    <span>Taken: <span>{inc.taken}</span></span>
-                  </div>
-                )}
-
-                {inc.isArrest && (
-                  <div className="cross-ref">
-                    <strong>Cross-reference detected</strong> — 23 months after the first
-                    incident. Cognee would have connected the tool signature across
-                    jurisdictions on day 1.
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+      {/* Temporal slider */}
+      <div className="temporal-slider-wrap">
+        <div className="temporal-slider-label-row">
+          <span className="temporal-slider-label">Temporal filter</span>
+          <span className="temporal-slider-date">
+            {isFiltered && sliderIdx < maxIdx
+              ? `Showing events up to ${formatSliderDate(sliderDate)}`
+              : "All events shown"}
+          </span>
+          {sliderIdx < maxIdx && (
+            <button
+              className="temporal-reset-btn"
+              onClick={() => setSliderIdx(maxIdx)}
+            >
+              Reset
+            </button>
+          )}
+        </div>
+        <input
+          type="range"
+          className="temporal-slider"
+          min={0}
+          max={maxIdx}
+          step={1}
+          value={sliderIdx}
+          onChange={(e) => setSliderIdx(Number(e.target.value))}
+        />
+        <div className="temporal-slider-ends">
+          <span>Jan 2023</span>
+          <span>Dec 2025</span>
         </div>
       </div>
+
+      {visibleIncidents.length === 0 ? (
+        <div className="temporal-empty">
+          <p>No incidents before {formatSliderDate(sliderDate)}. Drag the slider forward.</p>
+        </div>
+      ) : (
+        <div className="timeline-track">
+          <div className="timeline-line" />
+          <div
+            className="timeline-incidents"
+            style={{
+              gridTemplateColumns: `repeat(${Math.min(visibleIncidents.length, 4)}, 1fr)`,
+            }}
+          >
+            {visibleIncidents.map((inc, i) => (
+              <div key={i} className={`incident${isFiltered ? " incident-fade-in" : ""}`}>
+                <div className="incident-dot-wrap">
+                  <div className={`incident-dot ${inc.dotClass}`} />
+                  <div className="incident-stem" />
+                </div>
+
+                <div className={`incident-card${inc.isArrest ? " arrest" : ""}`}>
+                  <div className="incident-date">{inc.date}</div>
+                  <div className="incident-case">{inc.case}</div>
+                  <span className={jurBadgeClass(inc.jurKey)}>{jurLabel(inc.jurKey)}</span>
+                  <div className="incident-title">{inc.title}</div>
+                  <div className="incident-summary">{inc.summary}</div>
+
+                  {inc.tool && (
+                    <div className="incident-tool">
+                      <span style={{ color: "var(--gold)" }}>⚒</span>
+                      <span>{inc.tool}</span>
+                    </div>
+                  )}
+
+                  {inc.taken && (
+                    <div className="incident-tool">
+                      <span style={{ color: "var(--muted)" }}>↗</span>
+                      <span>
+                        Taken: <span>{inc.taken}</span>
+                      </span>
+                    </div>
+                  )}
+
+                  {inc.isArrest && (
+                    <div className="cross-ref">
+                      <strong>Cross-reference detected</strong> — 23 months after the first
+                      incident. Cognee would have connected the tool signature across
+                      jurisdictions on day 1.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="tl-legend">
         <div className="tl-legend-item">
