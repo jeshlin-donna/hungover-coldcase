@@ -26,7 +26,7 @@ body {
 }
 
 /* ── App shell ── */
-.app { max-width: 1280px; margin: 0 auto; padding: 24px 20px; }
+.app { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
 
 /* ── Header ── */
 header {
@@ -123,34 +123,48 @@ header h1 {
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 
 /* ── Nav ── */
-nav {
+.main-nav {
   display: flex;
-  gap: 6px;
-  margin: 0 0 16px;
-  padding: 6px;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 5px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  width: fit-content;
+  border-radius: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+.main-nav::-webkit-scrollbar { display: none; }
 
-nav button {
+.main-nav button {
   background: transparent;
   color: var(--muted);
   border: 1px solid transparent;
-  padding: 8px 18px;
-  border-radius: 7px;
+  padding: 7px 14px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
-nav button:hover { color: var(--text); background: var(--line-soft); }
-nav button.active {
-  background: var(--line-soft);
-  border-color: var(--line);
+.main-nav button:hover {
   color: var(--text);
+  background: var(--line-soft);
 }
+.main-nav button.active {
+  background: linear-gradient(135deg, rgba(88,166,255,0.12) 0%, rgba(88,166,255,0.06) 100%);
+  border-color: rgba(88,166,255,0.35);
+  color: var(--accent);
+  box-shadow: 0 0 12px rgba(88,166,255,0.15), inset 0 1px 0 rgba(88,166,255,0.1);
+}
+.tab-icon { font-size: 14px; line-height: 1; }
+.tab-label { font-size: 13px; }
 
 /* ── Shared panel ── */
 .panel {
@@ -559,26 +573,6 @@ footer {
   text-align: center;
   padding: 12px 0;
   border-top: 1px solid var(--line-soft);
-}
-
-/* ── Nav — scrollable on mobile ── */
-.main-nav {
-  display: flex;
-  gap: 6px;
-  margin: 0 0 16px;
-  padding: 6px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  width: 100%;
-}
-.main-nav::-webkit-scrollbar { display: none; }
-.main-nav button {
-  white-space: nowrap;
-  flex-shrink: 0;
 }
 
 /* ── Shared cognee insight box ── */
@@ -1901,6 +1895,85 @@ footer {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+/* ── Stats ribbon ── */
+.stats-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: linear-gradient(90deg, rgba(88,166,255,0.04) 0%, rgba(13,17,23,0) 100%);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-wrap: wrap;
+}
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.stat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.stat-val {
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.stat-key { color: var(--muted); }
+.stat-sep { color: var(--line); }
+.stat-sep-right { margin-left: auto; }
+.alibi-break { animation: alibiPulse 2.5s ease-in-out infinite; }
+@keyframes alibiPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* ── Tab panel fade transition ── */
+.tab-panel-fade {
+  animation: tabFadeIn 0.18s ease;
+}
+@keyframes tabFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Keyboard hint ── */
+.kbd-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0 0 12px 4px;
+  opacity: 0.7;
+}
+kbd {
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  background: var(--line-soft);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text);
+}
+
+/* ── Background dot grid ── */
+body {
+  background-image: radial-gradient(circle, rgba(48,54,61,0.5) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-attachment: fixed;
+}
+
+/* ── Header glow ── */
+header {
+  box-shadow: 0 0 40px rgba(88,166,255,0.06), 0 1px 0 rgba(88,166,255,0.08);
 }
 
 /* ── Responsive ── */

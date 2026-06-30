@@ -12,21 +12,22 @@ import UploadPanel from "./components/UploadPanel.jsx";
 import SuspectTimelinePanel from "./components/SuspectTimelinePanel.jsx";
 
 const TABS = [
-  { id: "chat", label: "Case Chat" },
-  { id: "graph", label: "Case Graph" },
-  { id: "compare", label: "Graph vs Vector" },
-  { id: "timeline", label: "Timeline" },
-  { id: "missing-hours", label: "Missing Hours" },
-  { id: "nexus", label: "Nexus" },
-  { id: "interrogation", label: "Interrogation" },
-  { id: "whatif", label: "What-If" },
-  { id: "upload", label: "Upload" },
-  { id: "suspect-timeline", label: "Suspect Timeline" },
+  { id: "chat",             label: "Case Chat",        icon: "💬" },
+  { id: "graph",            label: "Evidence Board",   icon: "🕸️" },
+  { id: "compare",          label: "Graph vs Vector",  icon: "⚖️" },
+  { id: "timeline",         label: "Timeline",         icon: "📅" },
+  { id: "missing-hours",    label: "Missing Hours",    icon: "🕳️" },
+  { id: "nexus",            label: "Nexus Point",      icon: "🔗" },
+  { id: "interrogation",    label: "Interrogation",    icon: "🎯" },
+  { id: "whatif",           label: "What-If",          icon: "🧪" },
+  { id: "upload",           label: "Messy Desk",       icon: "📁" },
+  { id: "suspect-timeline", label: "Suspect Timeline", icon: "🕵️" },
 ];
 
 export default function App() {
   const [tab, setTab] = useState("chat");
   const [mode, setMode] = useState(null);
+  const [stats, setStats] = useState({ nodes: 47, docs: 261, jurisdictions: 3, alibiBreak: true });
   const [improving, setImproving] = useState(false);
   const [improved, setImproved] = useState(null);
   const [justImproved, setJustImproved] = useState(false);
@@ -38,6 +39,19 @@ export default function App() {
 
   useEffect(() => {
     api.health().then((h) => setMode(h.mode)).catch(() => setMode("offline"));
+  }, []);
+
+  useEffect(() => {
+    function onKey(e) {
+      // Don't intercept when user is typing in an input
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      const idx = parseInt(e.key) - 1;
+      if (!isNaN(idx) && idx >= 0 && idx < TABS.length) {
+        setTab(TABS[idx].id);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   function showToast(msg) {
@@ -162,35 +176,70 @@ export default function App() {
         </div>
       </header>
 
+      <div className="stats-ribbon">
+        <span className="stat-item">
+          <span className="stat-dot" style={{background:"var(--accent)"}}/>
+          <span className="stat-val">{stats.nodes}</span>
+          <span className="stat-key">graph nodes</span>
+        </span>
+        <span className="stat-sep">·</span>
+        <span className="stat-item">
+          <span className="stat-dot" style={{background:"var(--win)"}}/>
+          <span className="stat-val">{stats.docs}</span>
+          <span className="stat-key">docs ingested</span>
+        </span>
+        <span className="stat-sep">·</span>
+        <span className="stat-item">
+          <span className="stat-dot" style={{background:"var(--warning)"}}/>
+          <span className="stat-val">{stats.jurisdictions}</span>
+          <span className="stat-key">jurisdictions</span>
+        </span>
+        <span className="stat-sep">·</span>
+        <span className="stat-item alibi-break">
+          <span style={{color:"var(--danger)"}}>⚠</span>
+          <span className="stat-key" style={{color:"var(--danger)"}}>alibi break detected</span>
+        </span>
+        <span className="stat-sep stat-sep-right">·</span>
+        <span className="stat-item">
+          <span className="stat-key" style={{color:"var(--muted)"}}>ACTIVE CASE:</span>
+          <span className="stat-val" style={{color:"var(--text)"}}>Daniel Marsh · Millbrook / Riverside</span>
+        </span>
+      </div>
+
       <nav className="main-nav">
         {TABS.map((t) => (
           <button
             key={t.id}
             className={tab === t.id ? "active" : ""}
             onClick={() => setTab(t.id)}
+            title={t.label}
           >
-            {t.label}
+            <span className="tab-icon">{t.icon}</span>
+            <span className="tab-label">{t.label}</span>
           </button>
         ))}
       </nav>
+      <p className="kbd-hint">Press <kbd>1</kbd>–<kbd>0</kbd> to switch panels</p>
 
       <main>
-        {tab === "chat" && <ChatPanel />}
-        {tab === "graph" && (
-          <GraphPanel
-            justImproved={justImproved}
-            graphData={graphData}
-            onGraphLoaded={setGraphData}
-          />
-        )}
-        {tab === "compare" && <ComparePanel />}
-        {tab === "timeline" && <TimelinePanel />}
-        {tab === "missing-hours" && <MissingHoursPanel />}
-        {tab === "nexus" && <NexusPanel />}
-        {tab === "interrogation" && <InterrogationPanel />}
-        {tab === "whatif" && <WhatIfPanel />}
-        {tab === "upload" && <UploadPanel onGraphUpdated={handleGraphUpdated} />}
-        {tab === "suspect-timeline" && <SuspectTimelinePanel />}
+        <div key={tab} className="tab-panel-fade">
+          {tab === "chat" && <ChatPanel />}
+          {tab === "graph" && (
+            <GraphPanel
+              justImproved={justImproved}
+              graphData={graphData}
+              onGraphLoaded={setGraphData}
+            />
+          )}
+          {tab === "compare" && <ComparePanel />}
+          {tab === "timeline" && <TimelinePanel />}
+          {tab === "missing-hours" && <MissingHoursPanel />}
+          {tab === "nexus" && <NexusPanel />}
+          {tab === "interrogation" && <InterrogationPanel />}
+          {tab === "whatif" && <WhatIfPanel />}
+          {tab === "upload" && <UploadPanel onGraphUpdated={handleGraphUpdated} />}
+          {tab === "suspect-timeline" && <SuspectTimelinePanel />}
+        </div>
       </main>
 
       <footer>
