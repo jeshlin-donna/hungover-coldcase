@@ -1,7 +1,8 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { api } from "../api.js";
 
-const ACCEPTED = ".txt,.pdf,.md";
+const ACCEPTED = ".txt,.pdf,.md,.jpg,.jpeg,.png,.gif,.webp";
+const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "gif", "webp"]);
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -9,12 +10,34 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function isImage(filename) {
+  return IMAGE_EXTS.has((filename || "").split(".").pop().toLowerCase());
+}
+
+function fileIcon(name) {
+  if (isImage(name)) return "🖼️";
+  if (name.endsWith(".pdf")) return "📄";
+  if (name.endsWith(".md")) return "📝";
+  return "📃";
+}
+
 export default function UploadPanel() {
   const [dragging, setDragging] = useState(false);
   const [pending, setPending] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [ingestedFiles, setIngestedFiles] = useState([]);
   const inputRef = useRef();
+
+  useEffect(() => {
+    if (pending && isImage(pending.name)) {
+      const url = URL.createObjectURL(pending);
+      setPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setPreviewUrl(null);
+    }
+  }, [pending]);
 
   function handleFiles(files) {
     const file = files[0];
@@ -46,12 +69,13 @@ export default function UploadPanel() {
     setUploading(true);
     try {
       const res = await api.ingestFile(pending);
-      const mode = res?.mode || "degraded";
       setIngestedFiles((prev) => [
         {
           name: pending.name,
           size: pending.size,
-          mode,
+          mode: res?.mode || "degraded",
+          type: res?.type || "text",
+          imageDescription: res?.image_description || null,
           timestamp: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
           status: "success",
         },
@@ -59,12 +83,13 @@ export default function UploadPanel() {
       ]);
       setPending(null);
     } catch {
-      // Still show as success in degraded mode — the mock backend always works.
       setIngestedFiles((prev) => [
         {
           name: pending.name,
           size: pending.size,
           mode: "degraded",
+          type: isImage(pending.name) ? "image" : "text",
+          imageDescription: null,
           timestamp: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
           status: "success",
         },
@@ -109,31 +134,32 @@ export default function UploadPanel() {
         {!pending ? (
           <div className="drop-zone-inner">
             <div className="drop-icon">📁</div>
-            <p className="drop-main">Drop case files here or click to browse</p>
-            <p className="drop-sub">Accepts .txt · .pdf · .md</p>
+            <p className="drop-main">Drop case files or images here or click to browse</p>
+            <p className="drop-sub">Text: .txt · .pdf · .md &nbsp;|&nbsp; Images: .jpg · .png · .gif · .webp</p>
           </div>
         ) : (
           <div className="drop-pending" onClick={(e) => e.stopPropagation()}>
+            {previewUrl && (
+              <div className="image-preview-wrap">
+                <img src={previewUrl} alt="preview" className="image-preview" />
+                <span className="image-vision-badge">Claude Vision will extract forensic details</span>
+              </div>
+            )}
             <div className="pending-file-info">
-              <span className="pending-icon">
-                {pending.name.endsWith(".pdf")
-                  ? "📄"
-                  : pending.name.endsWith(".md")
-                  ? "📝"
-                  : "📃"}
-              </span>
+              <span className="pending-icon">{fileIcon(pending.name)}</span>
               <div className="pending-meta">
                 <span className="pending-name">{pending.name}</span>
-                <span className="pending-size">{formatBytes(pending.size)}</span>
+                <span className="pending-size">
+                  {formatBytes(pending.size)}
+                  {isImage(pending.name) && " · image → vision analysis → graph"}
+                </span>
               </div>
             </div>
             <div className="pending-actions">
-              <button
-                className="upload-btn"
-                onClick={uploadFile}
-                disabled={uploading}
-              >
-                {uploading ? "Ingesting…" : "Ingest into graph"}
+              <button className="upload-btn" onClick={uploadFile} disabled={uploading}>
+                {uploading
+                  ? isImage(pending.name) ? "Analyzing image…" : "Ingesting…"
+                  : "Ingest into graph"}
               </button>
               <button className="dismiss-btn" onClick={dismiss} disabled={uploading}>
                 Dismiss
@@ -150,15 +176,20 @@ export default function UploadPanel() {
             {ingestedFiles.map((f, i) => (
               <div key={i} className="ingested-file">
                 <span className="ingested-check">✓</span>
-                <div className="ingested-info">
+                <div className="ingested-info" style={{ flex: 1 }}>
                   <span className="ingested-name">{f.name}</span>
                   <span className="ingested-detail">
                     {formatBytes(f.size)} · {f.timestamp}
+                    {f.type === "image" && " · image → vision extracted"}
                   </span>
+                  {f.imageDescription && (
+                    <div className="image-description-box">
+                      <span className="image-description-label">Vision extraction:</span>
+                      <p className="image-description-text">{f.imageDescription}</p>
+                    </div>
+                  )}
                 </div>
-                <span
-                  className={`ingested-mode-badge ${f.mode}`}
-                >
+                <span className={`ingested-mode-badge ${f.mode}`}>
                   {f.mode === "live" ? "live" : "degraded"} mode
                 </span>
               </div>
