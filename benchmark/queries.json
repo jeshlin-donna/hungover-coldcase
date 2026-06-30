@@ -1,0 +1,22 @@
+{
+  "_comment": "Gold doc IDs match the DOC_ID headers in data/hero_case/*. single_hop = answerable from ONE doc (vector should do fine). multi_hop = requires connecting >=2 docs, usually across jurisdictions (where graph should win). Expand toward 25-30 for the final run; mix in noise-corpus queries once Sam's public data lands.",
+  "queries": [
+    {"id": "q01", "type": "single_hop", "query": "What tool caused the marks on the rear door at 14 Maple Heights Drive?", "gold": ["MH-0312-FOR"]},
+    {"id": "q02", "type": "single_hop", "query": "What vehicle did a witness see near the Riverside Lane burglary?", "gold": ["RV-0788-WIT"]},
+    {"id": "q03", "type": "single_hop", "query": "When did the 2025 Maple Heights Court burglary happen and what was taken?", "gold": ["MH-0102-NARR"]},
+    {"id": "q04", "type": "single_hop", "query": "How did the offender get into 902 Riverside Lane?", "gold": ["RV-0788-NARR"]},
+    {"id": "q05", "type": "single_hop", "query": "What partial license plate was reported in the 2023 Maple Heights case?", "gold": ["MH-0312-WIT"]},
+    {"id": "q06", "type": "single_hop", "query": "Who was arrested for the 2025 Maple Heights Court burglary?", "gold": ["MH-0102-ARR"]},
+
+    {"id": "q07", "type": "multi_hop", "query": "Is there forensic evidence linking the Maple Heights and Riverside burglaries?", "gold": ["MH-0312-FOR", "RV-0788-FOR"]},
+    {"id": "q08", "type": "multi_hop", "query": "Across all three burglaries, what is consistent about how the offender broke in?", "gold": ["MH-0312-NARR", "RV-0788-NARR", "MH-0102-NARR"]},
+    {"id": "q09", "type": "multi_hop", "query": "Which cases share both the same 8mm tool signature and a dark blue sedan?", "gold": ["MH-0312-FOR", "MH-0312-WIT", "RV-0788-FOR", "RV-0788-WIT"]},
+    {"id": "q10", "type": "multi_hop", "query": "Was a regional or cross-jurisdiction database check ever recommended, and what happened to that recommendation?", "gold": ["MH-0312-FOR", "RV-0788-FOR"]},
+    {"id": "q11", "type": "multi_hop", "query": "Do the Maple Heights 2023 and 2025 cases involve the same tool?", "gold": ["MH-0312-FOR", "MH-0102-FOR"]},
+    {"id": "q12", "type": "multi_hop", "query": "What evidence ties Daniel Marsh to the Riverside burglary specifically?", "gold": ["MH-0102-ARR", "RV-0788-FOR"]},
+    {"id": "q13", "type": "multi_hop", "query": "If you only had the two 2023 cases, what shared signals would suggest a single serial offender?", "gold": ["MH-0312-FOR", "MH-0312-WIT", "RV-0788-FOR", "RV-0788-WIT"]},
+    {"id": "q14", "type": "multi_hop", "query": "Why wasn't the serial pattern caught earlier across the two departments?", "gold": ["MH-0312-FOR", "RV-0788-FOR", "MH-0102-ARR", "RV-0788-NARR"]},
+    {"id": "q15", "type": "multi_hop", "query": "Connect the dark blue sedan sightings across every case that mentions one.", "gold": ["MH-0312-WIT", "RV-0788-WIT", "MH-0102-NARR"]},
+    {"id": "q16", "type": "multi_hop", "query": "Which forensic reports describe a blade with a nick on the left edge?", "gold": ["MH-0312-FOR", "RV-0788-FOR", "MH-0102-FOR"]}
+  ]
+}

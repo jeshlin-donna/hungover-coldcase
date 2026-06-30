@@ -1,0 +1,12 @@
+{
+  "events": [
+    {"date": "2023-03-03", "case": "MH-2023-0312", "jurisdiction": "Maple Heights",
+     "title": "Burglary — 14 Maple Heights Dr", "summary": "Rear slider pried, doorbell cam obscured, electronics + small safe taken. Witness: dark blue sedan, partial plate 8K."},
+    {"date": "2023-11-19", "case": "RV-2023-0788", "jurisdiction": "Riverside",
+     "title": "Burglary — 902 Riverside Lane", "summary": "Same MO in a different county. 8mm left-nick tool signature. Witness: dark blue sedan. No shared records system with Maple Heights."},
+    {"date": "2025-02-04", "case": "MH-2025-0102", "jurisdiction": "Maple Heights",
+     "title": "Burglary — 31 Maple Heights Ct", "summary": "Third job, same signature. Cam spray missed the lens edge → 4-sec clip caught the plate."},
+    {"date": "2025-02-10", "case": "MH-2025-0102", "jurisdiction": "Maple Heights",
+     "title": "Arrest — Daniel R. Marsh", "summary": "Plate → owner. Pry bar recovered matches 8mm + left nick across all three cases. Confession. ~23 months after the first burglary."}
+  ]
+}

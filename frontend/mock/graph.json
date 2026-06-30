@@ -1,0 +1,39 @@
+{
+  "nodes": [
+    {"id": "jur:maple-heights", "label": "Maple Heights PD (Clearwater Co.)", "type": "jurisdiction"},
+    {"id": "jur:riverside", "label": "Riverside PD (Hale Co.)", "type": "jurisdiction"},
+
+    {"id": "case:MH-0312", "label": "MH-2023-0312 · 2023-03-03", "type": "case"},
+    {"id": "case:RV-0788", "label": "RV-2023-0788 · 2023-11-19", "type": "case"},
+    {"id": "case:MH-0102", "label": "MH-2025-0102 · 2025-02-04", "type": "case"},
+
+    {"id": "tool:pry-8mm", "label": "Pry bar · 8mm · left-edge nick", "type": "tool"},
+    {"id": "veh:blue-sedan", "label": "Dark blue sedan · plate 8K·", "type": "vehicle"},
+    {"id": "mo:rear-slider", "label": "MO: rear slider, 02:00–04:00, cam obscured", "type": "mo"},
+
+    {"id": "suspect:daniel-marsh", "label": "Daniel R. Marsh (arrested 2025)", "type": "suspect"}
+  ],
+  "edges": [
+    {"source": "case:MH-0312", "target": "jur:maple-heights", "relation": "filed_in"},
+    {"source": "case:MH-0102", "target": "jur:maple-heights", "relation": "filed_in"},
+    {"source": "case:RV-0788", "target": "jur:riverside", "relation": "filed_in"},
+
+    {"source": "case:MH-0312", "target": "tool:pry-8mm", "relation": "tool_used"},
+    {"source": "case:RV-0788", "target": "tool:pry-8mm", "relation": "tool_used"},
+    {"source": "case:MH-0102", "target": "tool:pry-8mm", "relation": "tool_used"},
+
+    {"source": "case:MH-0312", "target": "veh:blue-sedan", "relation": "vehicle_seen"},
+    {"source": "case:RV-0788", "target": "veh:blue-sedan", "relation": "vehicle_seen"},
+    {"source": "case:MH-0102", "target": "veh:blue-sedan", "relation": "vehicle_seen"},
+
+    {"source": "case:MH-0312", "target": "mo:rear-slider", "relation": "matches_mo"},
+    {"source": "case:RV-0788", "target": "mo:rear-slider", "relation": "matches_mo"},
+    {"source": "case:MH-0102", "target": "mo:rear-slider", "relation": "matches_mo"},
+
+    {"source": "suspect:daniel-marsh", "target": "veh:blue-sedan", "relation": "owns"},
+    {"source": "suspect:daniel-marsh", "target": "tool:pry-8mm", "relation": "possessed"},
+    {"source": "suspect:daniel-marsh", "target": "case:MH-0312", "relation": "confessed_to"},
+    {"source": "suspect:daniel-marsh", "target": "case:RV-0788", "relation": "confessed_to"},
+    {"source": "suspect:daniel-marsh", "target": "case:MH-0102", "relation": "confessed_to"}
+  ]
+}

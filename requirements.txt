@@ -1,0 +1,8 @@
+# HungOver — Cold Case Connector (Python 3.10+ required by Cognee)
+cognee
+sentence-transformers      # naive vector baseline for the benchmark
+scikit-learn               # cosine similarity / metrics helpers
+fastapi
+uvicorn[standard]
+python-dotenv
+matplotlib                 # benchmark chart

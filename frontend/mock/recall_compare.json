@@ -1,0 +1,24 @@
+{
+  "query": "Is there forensic evidence linking the Maple Heights and Riverside burglaries?",
+  "results": {
+    "naive_vector": {
+      "answer": "The Maple Heights forensic report (MH-0312-FOR) describes an 8mm flat pry blade with a nick on the left edge. (No cross-jurisdiction link surfaced.)",
+      "sources": ["MH-0312-FOR"],
+      "connects": ["MH-2023-0312"],
+      "latency_ms": 118
+    },
+    "cognee_vector": {
+      "answer": "Two Maple Heights forensic reports (MH-0312-FOR, MH-0102-FOR) describe the same 8mm left-nick blade, suggesting a repeat offender within Maple Heights. The Riverside case was not retrieved.",
+      "sources": ["MH-0312-FOR", "MH-0102-FOR"],
+      "connects": ["MH-2023-0312", "MH-2025-0102"],
+      "latency_ms": 332
+    },
+    "cognee_graph": {
+      "answer": "Yes. The Maple Heights forensic report (MH-0312-FOR) and the Riverside forensic report (RV-0788-FOR) both document an 8mm flat blade bearing a nick on the LEFT edge — the same distinctive tool signature, across two separate departments. Both reports recommended a regional database check that was never actioned. This links MH-2023-0312 and RV-2023-0788 to a single serial offender.",
+      "sources": ["MH-0312-FOR", "RV-0788-FOR"],
+      "connects": ["MH-2023-0312", "RV-2023-0788"],
+      "latency_ms": 404
+    }
+  },
+  "highlight": "Only cognee_graph connected evidence across the two jurisdictions."
+}
