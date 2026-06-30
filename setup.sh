@@ -26,15 +26,25 @@ done
 [ -n "$PY" ] || die "Need Python >= 3.10 (Cognee requires it). Install it and re-run."
 ok "Python: $("$PY" --version 2>&1) ($PY)"
 
-# 2. virtualenv
+# 2. virtualenv (handle the macOS/brew ensurepip failure gracefully)
 if [ ! -d .venv ]; then
-  "$PY" -m venv .venv || die "Could not create .venv (need the venv module)."
-  ok "Created .venv"
-else
-  ok ".venv already exists"
+  if "$PY" -m venv .venv 2>/dev/null; then
+    ok "Created .venv"
+  else
+    warn "venv+ensurepip failed (common with Homebrew Python) — creating without pip and bootstrapping it…"
+    rm -rf .venv
+    "$PY" -m venv --without-pip .venv || die "Could not create .venv (need the venv module)."
+    ok "Created .venv (no pip yet)"
+  fi
 fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
+# ensure pip exists (it won't if we fell back to --without-pip)
+if ! python -m pip --version >/dev/null 2>&1; then
+  warn "Bootstrapping pip via get-pip.py…"
+  curl -sS https://bootstrap.pypa.io/get-pip.py | python || die "pip bootstrap failed."
+fi
+ok "pip ready"
 
 # 3. dependencies
 bold "Installing dependencies (this can take a few minutes the first time)…"
