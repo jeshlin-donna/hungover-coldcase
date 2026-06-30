@@ -1,4 +1,4 @@
-# HungOver — Progress Tracker
+# ColdCache — Progress Tracker
 
 > **Last updated:** 2026-06-30 (Day 2, evening) — all 8 modules built, full benchmark running
 > Detailed plan: `EXECUTION_PLAN.md`

@@ -167,4 +167,4 @@ Every detective had a piece of the evidence. Nobody had the shared memory to con
 
 ---
 
-*Built by Team HungOver (Sam, Jesh, Benjy) for The Hangover Part AI hackathon, June–July 2026. All case data is entirely synthetic and illustrative — no real persons, cases, or departments. AI assistance (Claude, ChatGPT) was used for code and documentation; declared per hackathon rules.*
+*Built by Team ColdCache (Sam, Jesh, Benjy) for The Hangover Part AI hackathon, June–July 2026. All case data is entirely synthetic and illustrative — no real persons, cases, or departments. AI assistance (Claude, ChatGPT) was used for code and documentation; declared per hackathon rules.*

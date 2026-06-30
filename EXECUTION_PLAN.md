@@ -1,12 +1,12 @@
-# HungOver — Cold Case Connector
+# ColdCache — Cold Case Connector
 
 **The memory layer that connects the evidence humans already had.**
 
 > Three burglaries. Two police departments. Zero shared memory. Caught after 23 months by luck — not investigation. Cognee would have connected them in one query.
 
-- **Team:** HungOver (3) — **Sam (lead · AI/backend)**, Jesh (AI/backend), Benjy (frontend / product)
+- **Team:** ColdCache (3) — **Sam (lead · AI/backend)**, Jesh (AI/backend), Benjy (frontend / product)
 - **Track:** Best Use of **Open Source** (self-hosted Cognee) → MacBook per member
-- **Window:** Jun 29 – Jul 5, 2026. We're on **Day 2 (Jun 30)**. Submission target: **Jul 4 EOD**, buffer Jul 5.
+- **Window:** Jun 29 – Jul 5, 2026. Submission target: **Jul 4 EOD**, buffer Jul 5.
 - **AI disclosure:** Claude/ChatGPT used for code + docs. Declared in submission.
 
 ---
@@ -15,20 +15,20 @@
 
 The judges are **Cognee's own engineers**. We win by being the one submission that:
 
-1. **Uses all 4 lifecycle APIs for real reasons** — `remember` (ingest), `recall` (graph+vector+insights modes), `improve()` (session hunch → permanent memory), `forget()` (legal expungement)
+1. **Uses all 4 lifecycle APIs for real reasons** — `remember` (ingest), `recall` (graph+vector modes), `improve()` (session hunch → permanent memory), `forget()` (legal expungement)
 2. **Earns the graph win empirically** — 3-way benchmark (naive vs RAG vs GRAPH) with Recall@k + MRR, showing graph >> vector on multi-hop queries
 3. **Tells one gripping story** — Daniel Marsh 3-burglary series, 2 departments, 23 months
-4. **Builds all 5 proposal modules** — not just a chatbot, a full investigative co-pilot
+4. **Builds all 8 proposal modules** — not just a chatbot, a full investigative co-pilot
 5. **Looks spectacular** — 8-panel UI, temporal slider, force graph, alibi break animation
 
 ### Judging criteria map
 | Criterion | What earns it | Owner |
 |---|---|---|
 | Potential Impact | Cross-jurisdiction evidence gap is a real, serious problem; expungement = civic responsibility | Jesh |
-| Creativity & Innovation | 5 agentic modules (alibi, missing hours, nexus, interrogation co-pilot, what-if sandbox) | Sam |
-| Technical Excellence | 3-way benchmark, async pipeline, 8 endpoints, graph schema | Jesh |
-| **Best Use of Cognee** (heaviest) | All 4 APIs + GRAPH/VECTOR/INSIGHTS modes + session_ids in improve() + dataset-level forget() | Jesh + Sam |
-| User Experience | 8 panels, drag-drop ingestion, temporal slider, animations | Benjy |
+| Creativity & Innovation | 8 agentic modules (alibi, missing hours, nexus, interrogation co-pilot, what-if sandbox, messy desk) | Sam |
+| Technical Excellence | 3-way benchmark, async pipeline, 15 endpoints, graph schema | Jesh |
+| **Best Use of Cognee** (heaviest) | All 4 APIs + GRAPH/VECTOR modes + session_ids in improve() + dataset-level forget() | Jesh + Sam |
+| User Experience | 8 panels, dark theme, drag-drop ingestion, temporal slider, animations | Benjy |
 | Presentation Quality | Story-first README, blog post, social posts, 2-min demo video, benchmark chart | All |
 
 ---
@@ -46,7 +46,7 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
                         │
               backend/main.py (FastAPI)
               ┌─────────┴──────────┐
-              │ 13 endpoints        │   benchmark/
+              │ 15 endpoints        │   benchmark/
               │ /recall /hunch      │   3-way: naive vs RAG vs GRAPH
               │ /resolve /expunge   │   Recall@k, MRR, chart.png
               │ /missing-hours      │
@@ -80,53 +80,42 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
 
 ---
 
-## 3. Remaining schedule (Day 2 evening → Day 7)
+## 3. Steps to completion
 
-### Day 2 (TODAY — Jun 30): Build sprint ← WE ARE HERE
-- [x] Priority 0 + smoke test passes
+### Phase 1 — Foundation (DONE)
+- [x] Priority 0 + smoke test passes (cognee 1.2.2 + lancedb 0.26.0 + fastembed + Claude key)
 - [x] Demo.py live end-to-end passes (all 5 phases)
-- [x] Frontend: 3 core panels polished (dark theme, animations)
-- [x] Blog post + social posts + README rewrite
-- [ ] 250-doc noise corpus (66/250 done, agent running)
-- [ ] 5 new backend endpoints (agent running)
-- [ ] 5 new frontend panels + temporal slider (agent running)
-- [ ] Full 3-way benchmark run (agent waiting on corpus)
+- [x] Backend: 15 endpoints implemented (FastAPI, live/degraded mode)
+- [x] Frontend: 8 panels implemented (dark theme, animations)
+- [x] Blog post + social posts + README written
 
-### Day 3 (Wed Jul 1): Integration + benchmark
+### Phase 2 — Corpus & Benchmark (IN PROGRESS)
+- [ ] Complete 250-doc noise corpus (102/250 done, agent running)
+- [ ] Full 3-way benchmark run produces results.json + chart.png
+- [ ] Update README + blog with real benchmark numbers
+- [ ] Capture real improve() before/after metric delta
+
+### Phase 3 — Integration & QA
 - [ ] All agents merged + committed
-- [ ] Full benchmark produces results.json + chart.png with real numbers
-- [ ] README + blog updated with real numbers
-- [ ] Backend wired live (run uvicorn + verify all 13 endpoints)
-- [ ] Frontend hitting real backend (not just mock)
-- [ ] improve() before/after metric captured from real run
-- [ ] Sam: source/clean data/raw to 250 docs, SOURCES.md
-
-### Day 4 (Thu Jul 2): Demo polish
-- [ ] Full integration run-through (all 8 panels, all happy paths)
+- [ ] Wire frontend to live backend (uvicorn + verify all 15 endpoints respond correctly)
+- [ ] Test all 8 panels against live Cognee (not just mock)
+- [ ] Test drag-drop ingestion end-to-end (upload new doc → appears in graph)
 - [ ] Dry-run demo.py twice on clean state
-- [ ] ISSUES.md — log any bugs, fix them
-- [ ] Drag-drop ingestion tested live (upload a new doc, see it in graph)
-- [ ] What-If sandbox tested with real what-if scenarios
-- [ ] Nexus point tested between all node pairs
+- [ ] Fix any bugs discovered during integration
 
-### Day 5 (Fri Jul 3): Video + final content
+### Phase 4 — Content & Submission prep
 - [ ] Benjy: record 2-min demo video (screen + voiceover)
-  - Script: 23-month hook → ingest → compare (vector vs graph fails → graph wins) → alibi break → interrogation co-pilot → resolve/improve → expunge
-- [ ] Publish blog post
-- [ ] Final README pass (drop placeholder numbers, put real ones)
+  - Script: 23-month hook → ingest → 3-way compare (vector fails, graph wins) → alibi break → interrogation co-pilot → resolve/improve → expunge
+- [ ] Sam: publish blog post on Medium/Dev.to
+- [ ] Benjy: publish social posts (Twitter/X thread, LinkedIn, Instagram) on submission day
 - [ ] All: browse Cognee GitHub issues, claim + submit 1-2 real PRs ($100 each)
 
-### Day 6 (Sat Jul 4 — load-bearing day): QA + submit
-- [ ] Clean-clone test (fresh venv, follow README, confirm everything works)
+### Phase 5 — Final QA & Submit
+- [ ] Clean-clone test: fresh venv, follow README from scratch, confirm everything works
 - [ ] Make repo public
 - [ ] Tag v1.0
 - [ ] Fill submission form: repo link, video link, blog link, 4-API writeup, AI disclosure, team
-- [ ] Sam: publish blog; Benjy: publish social posts
 - [ ] Submit early (don't wait for deadline)
-
-### Day 7 (Sun Jul 5): Buffer
-- [ ] Fix anything broken from QA
-- [ ] Final submission confirmation
 
 ---
 
@@ -142,7 +131,7 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
 
 ---
 
-## 5. The 8 agentic modules (from proposal)
+## 5. The 8 agentic modules
 
 | Module | Endpoint | UI Panel | Cognee API used |
 |---|---|---|---|
@@ -175,7 +164,7 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
 ---
 
 ## 8. Submission copy
-- **Team:** HungOver
+- **Team:** ColdCache
 - **Product:** Cold Case Connector
 - **One-liner:** "Every detective had a piece of the evidence. Nobody had the shared memory to connect it. Cognee does."
 - **AI disclosure:** Built with Claude Code (Anthropic) for code generation and documentation. All AI usage declared per hackathon rules.

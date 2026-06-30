@@ -186,7 +186,7 @@ def plot(results: list[dict]) -> None:
     plt.bar([i + 0.2 for i in x], multi, width=0.4, label="multi-hop")
     plt.xticks(list(x), names, rotation=10)
     plt.ylabel("Recall@3")
-    plt.title("HungOver: graph vs vector retrieval (the multi-hop gap is the story)")
+    plt.title("ColdCache: graph vs vector retrieval (the multi-hop gap is the story)")
     plt.legend()
     plt.tight_layout()
     plt.savefig(OUT_CHART, dpi=140)

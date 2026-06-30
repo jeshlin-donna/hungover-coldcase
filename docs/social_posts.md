@@ -32,7 +32,7 @@ recall() — graph vs vector modes driving the benchmark
 improve() — detective hunches bridge from session → permanent memory on case resolution
 forget() — legal record expungement (actual use case, not a demo gimmick)
 
-Repo: github.com/jeshlin-donna/hungover-coldcase
+Repo: github.com/jeshlin-donna/coldcache-coldcase
 Blog: [link]
 
 Built by @samuelshine @jeshlin-donna @benjyguitar for @wemakedevs x @cognee_ai

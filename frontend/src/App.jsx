@@ -46,7 +46,7 @@ export default function App() {
     <div className="app">
       <header>
         <div className="header-left">
-          <h1>HungOver · Cold Case Connector</h1>
+          <h1>ColdCache · Cold Case Connector</h1>
           <p className="tag">
             Every detective had a piece of the evidence. Nobody had the shared
             memory to connect it. Cognee does.

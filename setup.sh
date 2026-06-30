@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HungOver — one-command bootstrap for Priority 0.
+# ColdCache — one-command bootstrap for Priority 0.
 #   ./setup.sh          # venv + install + env check, then offer to run the smoke test
 #   ./setup.sh --smoke  # also run backend/smoke_test.py at the end (non-interactive)
 #
@@ -12,7 +12,7 @@ ok()   { printf "\033[32m✓ %s\033[0m\n" "$1"; }
 warn() { printf "\033[33m! %s\033[0m\n" "$1"; }
 die()  { printf "\033[31m✗ %s\033[0m\n" "$1" >&2; exit 1; }
 
-bold "HungOver · Cold Case Connector — setup"
+bold "ColdCache · Cold Case Connector — setup"
 
 # 1. find Python >= 3.10 (Cognee requires it)
 PY=""
