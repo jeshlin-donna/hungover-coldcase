@@ -17,6 +17,9 @@
     {"id": "q13", "type": "multi_hop", "query": "If you only had the two 2023 cases, what shared signals would suggest a single serial offender?", "gold": ["MH-0312-FOR", "MH-0312-WIT", "RV-0788-FOR", "RV-0788-WIT"]},
     {"id": "q14", "type": "multi_hop", "query": "Why wasn't the serial pattern caught earlier across the two departments?", "gold": ["MH-0312-FOR", "RV-0788-FOR", "MH-0102-ARR", "RV-0788-NARR"]},
     {"id": "q15", "type": "multi_hop", "query": "Connect the dark blue sedan sightings across every case that mentions one.", "gold": ["MH-0312-WIT", "RV-0788-WIT", "MH-0102-NARR"]},
-    {"id": "q16", "type": "multi_hop", "query": "Which forensic reports describe a blade with a nick on the left edge?", "gold": ["MH-0312-FOR", "RV-0788-FOR", "MH-0102-FOR"]}
+    {"id": "q16", "type": "multi_hop", "query": "Which forensic reports describe a blade with a nick on the left edge?", "gold": ["MH-0312-FOR", "RV-0788-FOR", "MH-0102-FOR"]},
+
+    {"id": "q17", "type": "multi_hop", "query": "Does Daniel Marsh's alibi for the night of the Riverside burglary hold up against the other evidence?", "gold": ["MARSH-ALIBI", "MARSH-RECEIPT"]},
+    {"id": "q18", "type": "multi_hop", "query": "Is there any record that places the suspect near the Riverside scene on the night he claims he was out of state?", "gold": ["MARSH-ALIBI", "MARSH-RECEIPT", "RV-0788-NARR"]}
   ]
 }

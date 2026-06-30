@@ -43,6 +43,8 @@ class Handler(BaseHTTPRequestHandler):
         qs = parse_qs(urlparse(self.path).query)
         if path == "/graph":
             return self._send(load("graph.json"))
+        if path == "/contradictions":
+            return self._send({"contradictions": load("graph.json").get("contradictions", [])})
         if path == "/timeline":
             return self._send(load("timeline.json"))
         if path == "/recall/compare":

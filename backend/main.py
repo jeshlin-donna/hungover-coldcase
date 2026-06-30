@@ -96,6 +96,14 @@ def timeline():
     return mock("timeline.json")
 
 
+@app.get("/contradictions")
+def contradictions():
+    # Cognee builds the unified graph; THIS check is our logic over it (we never claim
+    # Cognee auto-detects contradictions). TODO(live): confirm each candidate pair with a
+    # targeted recall() over the graph before flagging. For now: the curated hero-case set.
+    return {"contradictions": mock("graph.json").get("contradictions", [])}
+
+
 @app.get("/benchmark")
 def benchmark():
     return json.loads(BENCH.read_text()) if BENCH.exists() else {

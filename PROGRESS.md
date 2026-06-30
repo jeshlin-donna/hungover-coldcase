@@ -1,7 +1,7 @@
 # HungOver — Progress Tracker
 
 > Living status doc. Updated as we go. Detailed plan lives in `EXECUTION_PLAN.md`.
-> **Last updated:** 2026-06-30 (Day 2) — built FastAPI backend, React frontend scaffold, and README draft
+> **Last updated:** 2026-06-30 (Day 2) — added the **Alibi Break** (contradiction view); multi-modal + drag-drop logged as stretch
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo · 🚧 blocked
 
@@ -23,6 +23,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🚧 blocked
 | `frontend/` — Vite + React, 3 panels + graph viz | Jesh | Scaffold complete (graph / 3-way compare / timeline); runs against mock server now |
 | `README.md` — story-first submission front door | Jesh | Drafted; benchmark numbers are placeholders until live run |
 | `setup.sh` — one-command Priority-0 bootstrap | Jesh | Syntax-checked; picks Python ≥3.10, venv+deps+env+smoke test |
+| **Alibi Break** — 2nd wow beat (contradiction detection) | Jesh | Alibi+receipt docs, `/contradictions` endpoint, red-line graph view, demo + benchmark queries. Works on mock today |
 
 ---
 
@@ -53,6 +54,13 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🚧 blocked
 | 13 | Social posts tagging @wemakedevs + Cognee (side track → swag) | Benjy | — |
 | 14 | Open-source PRs to Cognee repo ($100 each, max 5/person) | All | — (start anytime) |
 | 15 | Final QA on clean clone + submit (with AI disclosure) | All | all above |
+
+### Stretch goals (only after Tier 0 core is live — do not let these block Priority 0)
+| Tier | Item | Owner | Notes |
+|---|---|---|---|
+| ✅ T1 | **Alibi Break** contradiction view | Jesh | DONE (works on mock; live contradiction-confirm via `recall()` is a TODO in `main.py`) |
+| T2 | Multi-modal ingestion: evidence photo → vision LLM (gpt-4o) → text → `remember()` | Sam | **Pre-bake, never live on stage** (vision calls slow/flaky). High wow if core is done |
+| T3 | Drag-and-drop ingestion drop-zone UI | Benjy | Nice UX; not core |
 
 ---
 

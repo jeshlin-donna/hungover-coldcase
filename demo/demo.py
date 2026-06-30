@@ -109,6 +109,16 @@ async def main(reset: bool) -> None:
     slow("\n  → Only the graph connects MH-2023-0312 (Clearwater Co.) with "
          "RV-2023-0788 (Hale Co.). That link is the whole case.")
 
+    # The "Alibi Break" — Cognee gives the linked graph; the contradiction call-out is ours.
+    slow('\nThe Alibi Break — Marsh claims he was 300mi out of state that night:')
+    answer_block("GRAPH — alibi vs financial records",
+                 await mem.recall(
+                     "Does Daniel Marsh's alibi for the night of the Riverside burglary "
+                     "hold up against his financial records?",
+                     mode=RecallMode.GRAPH, dataset=DATASET))
+    slow("  → The alibi (MARSH-ALIBI) collapses against the motel record (MARSH-RECEIPT) "
+         "4.2 miles from the scene. Cognee linked them; we flag the contradiction.")
+
     # PHASE 4 — IMPROVE
     banner(4, "improve(): the case resolves and memory gets smarter")
     slow("Suspect arrested; Det. Cole confirms the cross-county link is real.")

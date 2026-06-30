@@ -11,7 +11,10 @@
     {"id": "veh:blue-sedan", "label": "Dark blue sedan · plate 8K·", "type": "vehicle"},
     {"id": "mo:rear-slider", "label": "MO: rear slider, 02:00–04:00, cam obscured", "type": "mo"},
 
-    {"id": "suspect:daniel-marsh", "label": "Daniel R. Marsh (arrested 2025)", "type": "suspect"}
+    {"id": "suspect:daniel-marsh", "label": "Daniel R. Marsh (arrested 2025)", "type": "suspect"},
+
+    {"id": "alibi:marsh-nov19", "label": "Alibi: '300mi out of state' · 2023-11-19", "type": "alibi"},
+    {"id": "receipt:marsh-nov19", "label": "Card record: motel 4.2mi from Riverside · 2023-11-19 00:48", "type": "receipt"}
   ],
   "edges": [
     {"source": "case:MH-0312", "target": "jur:maple-heights", "relation": "filed_in"},
@@ -34,6 +37,19 @@
     {"source": "suspect:daniel-marsh", "target": "tool:pry-8mm", "relation": "possessed"},
     {"source": "suspect:daniel-marsh", "target": "case:MH-0312", "relation": "confessed_to"},
     {"source": "suspect:daniel-marsh", "target": "case:RV-0788", "relation": "confessed_to"},
-    {"source": "suspect:daniel-marsh", "target": "case:MH-0102", "relation": "confessed_to"}
+    {"source": "suspect:daniel-marsh", "target": "case:MH-0102", "relation": "confessed_to"},
+
+    {"source": "suspect:daniel-marsh", "target": "alibi:marsh-nov19", "relation": "claims"},
+    {"source": "suspect:daniel-marsh", "target": "receipt:marsh-nov19", "relation": "card_used"},
+    {"source": "receipt:marsh-nov19", "target": "case:RV-0788", "relation": "places_near"},
+    {"source": "alibi:marsh-nov19", "target": "case:RV-0788", "relation": "denies_presence"}
+  ],
+  "contradictions": [
+    {
+      "a": "alibi:marsh-nov19",
+      "b": "receipt:marsh-nov19",
+      "reason": "Alibi claims 300 miles out of state on 2023-11-19; card records place Marsh at a motel 4.2 miles from the Riverside scene at 00:48 the same night.",
+      "sources": ["MARSH-ALIBI", "MARSH-RECEIPT"]
+    }
   ]
 }

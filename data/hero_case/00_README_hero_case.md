@@ -27,3 +27,16 @@ connecting the **forensic** tool-mark dims (docs A) + the **witness** vehicle (d
 the **narrative** MO (docs C) **across two jurisdictions**. Vector search retrieves the
 single most-similar chunk; it cannot assemble a cross-document, cross-county chain.
 Cognee's graph traversal can.
+
+## Second beat — the "Alibi Break"
+
+| Doc ID | Holds... |
+|---|---|
+| MARSH-ALIBI | Marsh claims he was **300 miles out of state** on the night of the Riverside burglary (2023-11-19) |
+| MARSH-RECEIPT | Card records place him at a **motel 4.2 miles from the Riverside scene** at 00:48 that same night |
+
+These two documents **directly contradict** each other. Cognee builds the unified graph
+(suspect → alibi, suspect → financial records → near Riverside); **our own contradiction
+check** over that graph surfaces the conflict, and the UI draws a glowing red line between
+the alibi and the receipt. *(Cognee provides the linked graph; the contradiction logic is
+ours — we never claim Cognee auto-detects contradictions.)*

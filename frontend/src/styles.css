@@ -27,6 +27,8 @@ nav button.active, .presets button.active { border-color: var(--accent); color: 
 .presets button { font-size: 12px; }
 button.danger { border-color: var(--danger); color: var(--danger); }
 .note, .highlight { color: var(--win); font-size: 14px; }
+.contradiction { color: #ff6b6b; font-size: 14px; margin: 6px 0; }
+.contradiction .srcs { color: var(--muted); font-family: ui-monospace, monospace; font-size: 12px; }
 .muted { color: var(--muted); }
 
 .graph-wrap { height: 480px; border: 1px solid var(--line); border-radius: 8px; margin: 12px 0; overflow: hidden; }

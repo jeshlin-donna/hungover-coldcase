@@ -27,6 +27,10 @@ with a benchmark, that the graph catches links vector search misses.
 > ⚠️ **Synthetic data only. Illustrative demo, not an operational tool.** Framing is
 > deliberately *"connect evidence humans already had"* — never predictive policing.
 
+**Two wow beats:**
+1. **The Link** — graph traversal connects a serial offender across two jurisdictions that never shared a database (vector search can't).
+2. **The Alibi Break** — the suspect's "300 miles out of state" alibi vs a motel record 4.2 miles from the scene the same night. Cognee builds the unified graph; **our contradiction check** over it surfaces the conflict, and the UI draws a glowing red line. *(We never claim Cognee auto-detects contradictions — it provides the graph; the deduction is ours.)*
+
 ## All four Cognee lifecycle APIs, each for a real reason
 
 | API | Where we use it |

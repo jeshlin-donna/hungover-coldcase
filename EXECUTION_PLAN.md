@@ -235,3 +235,11 @@ Stacks on top of the main prize. **Max 5 PRs/person**, no spam, no typo-only PRs
 - **Product:** Cold Case Connector *(working name — alt: "Throughline", "Coldwire")*
 - **One-liner:** "Every detective had a piece of the evidence. Nobody had the shared memory to connect it. Cognee does."
 - **Tagline:** Built on self-hosted, open-source Cognee — the memory layer that doesn't wake up in Vegas with no memory of last night.
+
+---
+
+## 8. Stretch goals (build ONLY after Tier 0 core is live)
+> Discipline: the core graph-beats-vector demo must run live once before any of this. Don't let stretch work block Priority 0.
+- **✅ Tier 1 — Alibi Break (DONE):** a contradiction view. Marsh's "out of state" alibi vs a motel record 4.2mi from the scene → glowing red line. **Honest framing: Cognee builds the graph; the contradiction check is our logic** (we never claim Cognee auto-detects contradictions). Live confirm-via-`recall()` is a TODO in `backend/main.py`.
+- **Tier 2 — Multi-modal ingestion:** evidence photo → vision LLM (gpt-4o) → structured text → `remember()`. High wow; **pre-bake it, never run vision live on stage** (slow/flaky). [SAM]
+- **Tier 3 — Drag-and-drop drop-zone** ingestion UI. Nice UX, not core. [BENJY]
