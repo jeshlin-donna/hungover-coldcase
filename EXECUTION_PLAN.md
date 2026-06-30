@@ -9,6 +9,11 @@
 - **Window:** Jun 29 – Jul 5, 2026. We're on **Day 2 (Jun 30)**. Submission target: **Jul 5 EOD**, with Jul 5 as buffer.
 - **AI assistant disclosure:** We use Claude/ChatGPT for code + docs. **This MUST be declared in the submission** (non-disclosure = DQ).
 
+> **📊 Build status (2026-06-30, Day 2) — live tracker: [`PROGRESS.md`](./PROGRESS.md)**
+> **Built:** repo + `memory_service` (4 APIs) · hero case (9 docs) · benchmark harness + queries · `demo.py` · FastAPI backend (live/degraded) · React frontend scaffold (3 panels) · mock server · README draft.
+> **🔑 The one gate:** Priority 0 (run `smoke_test.py` on a personal machine) — nothing runs live until this pins the `# VERIFY` SDK spots.
+> **Start now in parallel:** Jesh/Sam → Priority 0 · Benjy → build out frontend on mock server · Sam → source `data/raw/` corpus.
+
 ---
 
 ## 0. The North Star — how we actually win
@@ -97,8 +102,8 @@ The judges are **Cognee's own engineers**. They've seen 50 "chatbot-with-memory"
 - [ ] Confirm `improve(session_ids=...)` and `forget(dataset=...)` signatures actually run (12 min)
 
 **Repo + skeleton [JESH] (~30 min)**
-- [ ] `git init`, push to a **private** GitHub repo `hungover-coldcase` (make public near submission). Add `.gitignore` (`.venv`, `.env`, `data/raw`, `__pycache__`) (10 min)
-- [ ] Commit `memory_service.py` skeleton with the 4 verified APIs + `wait_for_indexing()` status-polling helper (20 min)
+- [x] `git init`, push to a **private** GitHub repo `hungover-coldcase`. Add `.gitignore` ✅ pushed to github.com/jeshlin-donna/hungover-coldcase
+- [x] Commit `memory_service.py` skeleton with the 4 APIs + `wait_for_indexing()` status-polling helper ✅
 
 **Corpus sourcing [SAM] (~90 min)**
 - [ ] Identify 1–2 **public** datasets for the noise corpus: e.g. public police-blotter / incident logs, Crime Data Explorer (FBI), court-record samples, NamUs-style public case summaries. Document license/source in `data/SOURCES.md` (45 min)
@@ -106,7 +111,7 @@ The judges are **Cognee's own engineers**. They've seen 50 "chatbot-with-memory"
 - [ ] Sanity-check format; note the fields we'll ingest (date, location, MO, tool marks, vehicle, narrative) (15 min)
 
 **Frontend bootstrap [BENJY] (~60 min)**
-- [ ] `npm create vite@latest frontend -- --template react`; install `react-force-graph-2d` + a fetch client (15 min)
+- [x] Vite + React scaffold with `react-force-graph-2d` + fetch client ✅ (done — `frontend/`; Benjy now builds out the panels)
 - [ ] Stub 3 panels (Graph / Retrieval compare / Timeline) with mock JSON so UI dev isn't blocked on backend (45 min)
 
 **EOD Day 2 deliverables:** Cognee verified ✓ · repo live ✓ · corpus chosen + downloaded ✓ · UI skeleton renders ✓
