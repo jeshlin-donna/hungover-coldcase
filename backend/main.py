@@ -29,6 +29,20 @@ IMAGE_TYPES = {
     "image/webp": "image/webp",
 }
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".ogg", ".aac"}
+VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm"}
+PDF_EXT = {".pdf"}
+SPREADSHEET_EXTS = {".xlsx", ".xls", ".csv"}
+
+def _file_modality(filename: str) -> str:
+    """Return 'image' | 'audio' | 'video' | 'pdf' | 'spreadsheet' | 'text'"""
+    ext = Path(filename).suffix.lower()
+    if ext in IMAGE_EXTS: return "image"
+    if ext in AUDIO_EXTS: return "audio"
+    if ext in VIDEO_EXTS: return "video"
+    if ext in PDF_EXT: return "pdf"
+    if ext in SPREADSHEET_EXTS: return "spreadsheet"
+    return "text"
 
 def _media_type_for(filename: str) -> str | None:
     ext = Path(filename).suffix.lower()
@@ -63,6 +77,105 @@ async def describe_image(content: bytes, filename: str, media_type: str) -> str:
         }]
     )
     return msg.content[0].text
+
+
+async def transcribe_audio(content: bytes, filename: str) -> str:
+    """Transcribe audio to text using local Whisper tiny model."""
+    import tempfile, os
+    try:
+        import whisper
+    except ImportError:
+        return "[Audio transcription unavailable: pip install openai-whisper]"
+    suffix = Path(filename).suffix or ".mp3"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+        f.write(content)
+        tmp_path = f.name
+    try:
+        model = whisper.load_model("tiny")
+        result = model.transcribe(tmp_path)
+        return result.get("text", "").strip()
+    finally:
+        os.unlink(tmp_path)
+
+
+async def extract_video_description(content: bytes, filename: str) -> str:
+    """Extract keyframes from video and describe each with Claude vision."""
+    import tempfile, os
+    try:
+        import cv2
+    except ImportError:
+        return "[Video analysis unavailable: pip install opencv-python-headless]"
+    suffix = Path(filename).suffix or ".mp4"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+        f.write(content)
+        tmp_path = f.name
+    try:
+        cap = cv2.VideoCapture(tmp_path)
+        fps = cap.get(cv2.CAP_PROP_FPS) or 1
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        # 1 frame every 10 seconds, max 5 frames
+        interval = max(1, int(fps * 10))
+        frame_indices = list(range(0, total, interval))[:5]
+        descriptions = []
+        for idx in frame_indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+            _, buf = cv2.imencode(".jpg", frame)
+            ts = idx / fps
+            desc = await describe_image(buf.tobytes(), f"frame_{idx}.jpg", "image/jpeg")
+            descriptions.append(f"[{ts:.1f}s into video] {desc}")
+        cap.release()
+        return "\n\n".join(descriptions) if descriptions else "[No frames extracted]"
+    finally:
+        os.unlink(tmp_path)
+
+
+async def extract_pdf_content(content: bytes, filename: str) -> str:
+    """Extract text from PDF; fall back to Claude vision for scanned pages."""
+    try:
+        import fitz  # pymupdf
+    except ImportError:
+        return "[PDF extraction unavailable: pip install pymupdf]"
+    doc = fitz.open(stream=content, filetype="pdf")
+    texts = []
+    for page_num, page in enumerate(doc):
+        text = page.get_text().strip()
+        if text:
+            texts.append(f"[Page {page_num + 1}]\n{text}")
+        else:
+            # Scanned page — render to image and use Claude vision
+            pix = page.get_pixmap(dpi=150)
+            img_bytes = pix.tobytes("jpeg")
+            desc = await describe_image(img_bytes, f"{filename}_page{page_num+1}.jpg", "image/jpeg")
+            texts.append(f"[Page {page_num + 1} — scanned image]\n{desc}")
+    return "\n\n".join(texts)
+
+
+def parse_spreadsheet(content: bytes, filename: str) -> str:
+    """Parse Excel/CSV into a structured text description for Cognee ingestion."""
+    try:
+        import pandas as pd
+        import io
+    except ImportError:
+        return "[Spreadsheet parsing unavailable: pip install pandas openpyxl]"
+    ext = Path(filename).suffix.lower()
+    try:
+        if ext == ".csv":
+            df = pd.read_csv(io.BytesIO(content))
+        else:
+            df = pd.read_excel(io.BytesIO(content))
+        rows_text = df.to_string(index=False, max_rows=500)
+        return (
+            f"SPREADSHEET EVIDENCE — {filename}\n"
+            f"Columns: {', '.join(str(c) for c in df.columns)}\n"
+            f"Rows: {len(df)}\n\n"
+            f"{rows_text}"
+        )
+    except Exception as e:
+        return f"[Spreadsheet parse error: {e}]"
+
 
 ROOT = Path(__file__).resolve().parents[1]
 MOCK = ROOT / "frontend" / "mock"
@@ -448,37 +561,69 @@ async def whatif(req: WhatIfReq):
 @app.post("/ingest-file")
 async def ingest_file(file: UploadFile = File(...)):
     content = await file.read()
-    media_type = _media_type_for(file.filename or "")
-    is_image = media_type is not None
-    image_description = None
+    fname = file.filename or "unknown"
+    modality = _file_modality(fname)
+    extracted_text = None
+    description = None
 
-    if is_image:
+    if modality == "image":
+        media_type = _media_type_for(fname)
         if LIVE:
             try:
-                image_description = await describe_image(content, file.filename, media_type)
-                ingest_text = (
-                    f"IMAGE EVIDENCE — {file.filename}\n\n"
-                    f"Forensic description extracted by AI vision analysis:\n{image_description}"
-                )
-                await mem.remember(ingest_text, dataset=DATASET)
+                description = await describe_image(content, fname, media_type)
+                extracted_text = f"IMAGE EVIDENCE — {fname}\n\nForensic description:\n{description}"
             except Exception as e:
-                image_description = f"[Vision analysis unavailable: {e}]"
+                description = f"[Vision analysis failed: {e}]"
         else:
-            image_description = (
-                "Mock mode: image received. In live mode, Claude vision would extract "
-                "a forensic description and ingest it into the knowledge graph."
-            )
-    else:
-        text = content.decode("utf-8", errors="ignore")
+            description = "Mock mode: image received. Live mode uses Claude vision to extract a forensic description."
+
+    elif modality == "audio":
         if LIVE:
-            await mem.remember(text, dataset=DATASET)
+            try:
+                transcript = await transcribe_audio(content, fname)
+                description = transcript
+                extracted_text = f"AUDIO TRANSCRIPT — {fname}\n\n{transcript}"
+            except Exception as e:
+                description = f"[Transcription failed: {e}]"
+        else:
+            description = "Mock mode: audio received. Live mode uses Whisper to transcribe and ingest the transcript."
+
+    elif modality == "video":
+        if LIVE:
+            try:
+                description = await extract_video_description(content, fname)
+                extracted_text = f"VIDEO EVIDENCE — {fname}\n\nFrame-by-frame forensic analysis:\n{description}"
+            except Exception as e:
+                description = f"[Video analysis failed: {e}]"
+        else:
+            description = "Mock mode: video received. Live mode extracts keyframes and describes each with Claude vision."
+
+    elif modality == "pdf":
+        if LIVE:
+            try:
+                description = await extract_pdf_content(content, fname)
+                extracted_text = f"PDF DOCUMENT — {fname}\n\n{description}"
+            except Exception as e:
+                description = f"[PDF extraction failed: {e}]"
+        else:
+            description = "Mock mode: PDF received. Live mode extracts text (or uses vision for scanned pages)."
+
+    elif modality == "spreadsheet":
+        description = parse_spreadsheet(content, fname)
+        extracted_text = description
+
+    else:
+        extracted_text = content.decode("utf-8", errors="ignore")
+
+    if LIVE and extracted_text:
+        await mem.remember(extracted_text, dataset=DATASET)
 
     return {
         "ok": True,
-        "filename": file.filename,
+        "filename": fname,
         "size_bytes": len(content),
         "dataset": DATASET,
         "mode": "live" if LIVE else "degraded",
-        "type": "image" if is_image else "text",
-        "image_description": image_description,
+        "type": modality,
+        "description": description,
     }
