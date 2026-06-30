@@ -1,4 +1,4 @@
-# HungOver — Cold Case Connector (Python 3.10+ required by Cognee)
+# ColdCache — Cold Case Connector (Python 3.10+ required by Cognee)
 cognee==1.2.2
 lancedb==0.26.0            # pin: 0.33 has a macOS ARM lance spill bug
 anthropic                  # needed by cognee's Anthropic adapter

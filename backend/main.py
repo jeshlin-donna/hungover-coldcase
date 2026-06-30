@@ -39,7 +39,7 @@ try:
 except Exception as e:  # pragma: no cover
     print(f"[backend] DEGRADED mode ({type(e).__name__}: {e}) — serving mock data")
 
-app = FastAPI(title="HungOver — Cold Case Connector")
+app = FastAPI(title="ColdCache — Cold Case Connector")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
                    allow_headers=["*"])
 

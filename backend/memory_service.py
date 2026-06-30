@@ -1,5 +1,5 @@
 """
-memory_service.py — the single abstraction over Cognee for HungOver: Cold Case Connector.
+memory_service.py — the single abstraction over Cognee for ColdCache: Cold Case Connector.
 
 Everything (FastAPI, demo, benchmark) goes through here so the rest of the codebase
 never touches the raw SDK. All four lifecycle APIs live here:

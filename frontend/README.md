@@ -1,4 +1,4 @@
-# Frontend — HungOver Cold Case Connector
+# Frontend — ColdCache Cold Case Connector
 
 React + Vite. Three panels: **Case Graph** (force-graph + expunge demo), **Graph vs
 Vector** (3-way retrieval compare), **Timeline**.
