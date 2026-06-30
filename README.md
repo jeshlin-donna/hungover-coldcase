@@ -12,27 +12,107 @@ Built for **The Hangover Part AI** hackathon · *Best Use of Open Source (self-h
 
 ---
 
-## Quick Start
+## Running the App
 
+There are three ways to run ColdCache depending on what you want to do.
+
+---
+
+### Option A — Full App (backend + frontend, live Cognee)
+
+**Prerequisites:** Python 3.10+, Node 18+, an Anthropic or OpenAI API key.
+
+**Step 1 — Install dependencies**
 ```bash
-# 1. Bootstrap (Python 3.10+ required, or use uv — see Troubleshooting)
-./setup.sh                        # creates .venv, pip install, scaffolds .env
-# Add LLM_API_KEY to .env (Anthropic or OpenAI key), then:
-./setup.sh --smoke                # verifies all 4 Cognee APIs against the live SDK
+./setup.sh
+```
+This creates a `.venv`, installs all Python packages, and scaffolds a `.env` file.
 
-# 2. Ingest the hero case
-python scripts/ingest.py --reset  # loads data/hero_case/ + data/raw/ into Cognee
+**Step 2 — Add your API key**
 
-# 3. Run the narrated demo
-python demo/demo.py --reset       # 5-phase walkthrough: ingest → hunch → compare → improve → expunge
-
-# 4. Run the full app
-uvicorn backend.main:app --port 8000 --reload
-cd frontend && npm install && npm run dev
-# Open http://localhost:5173
+Open `.env` and set:
+```
+LLM_API_KEY=your-anthropic-or-openai-key
+LLM_PROVIDER=anthropic          # or openai
+LLM_MODEL=claude-haiku-4-5-20251001
+EMBEDDING_PROVIDER=fastembed
+COGNEE_SKIP_CONNECTION_TEST=true
 ```
 
-No Cognee key? `python scripts/mock_server.py` runs the full UI on curated mock data (zero deps).
+**Step 3 — Verify Cognee works**
+```bash
+./setup.sh --smoke
+```
+You should see all 5 checks pass (remember → recall → improve → forget → reset).
+
+**Step 4 — Ingest the case files**
+```bash
+source .venv/bin/activate
+python scripts/ingest.py --reset
+```
+This loads `data/hero_case/` (11 case documents) and `data/raw/` (250 noise docs) into Cognee's knowledge graph. Takes 2–5 minutes.
+
+**Step 5 — Start the backend**
+```bash
+uvicorn backend.main:app --port 8000 --reload
+```
+Check `http://localhost:8000/health` — should return `{"mode": "live"}`.
+
+**Step 6 — Start the frontend** (in a new terminal)
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open **http://localhost:5173** — you'll see all 8 panels.
+
+---
+
+### Option B — Narrated Demo (terminal walkthrough, no UI needed)
+
+Runs a 5-phase narrated demo in the terminal — ingest → hunch → multi-hop recall → improve → expunge. Great for showing the Cognee APIs end-to-end.
+
+```bash
+source .venv/bin/activate
+python demo/demo.py --reset
+```
+
+Expected output: 5 clearly labeled phases with real LLM answers. The alibi break answer should mention the motel receipt placing the suspect 4.2 miles from the scene.
+
+---
+
+### Option C — Mock Mode (no API key, no Cognee)
+
+Runs the full 8-panel UI on curated mock data. Zero dependencies beyond Node.
+
+```bash
+# Terminal 1 — mock backend
+source .venv/bin/activate
+python scripts/mock_server.py
+
+# Terminal 2 — frontend
+cd frontend && npm run dev
+```
+
+Open **http://localhost:5173** — all panels work with pre-built mock responses.
+
+---
+
+### Running the Benchmark
+
+3-way comparison: naive cosine vs Cognee RAG vs Cognee graph. Requires Cognee to be set up and the corpus ingested (Option A steps 1–4).
+
+```bash
+source .venv/bin/activate
+
+# Full 3-way benchmark (~30 min, needs live Cognee)
+python benchmark/benchmark.py
+
+# Naive baseline only (offline, fast, ~2 min)
+python benchmark/benchmark.py --naive
+```
+
+Outputs: `benchmark/results.json` (raw scores) + `benchmark/chart.png` (bar chart).
 
 ---
 
