@@ -1,5 +1,8 @@
 # HungOver — Cold Case Connector (Python 3.10+ required by Cognee)
-cognee
+cognee==1.2.2
+lancedb==0.26.0            # pin: 0.33 has a macOS ARM lance spill bug
+anthropic                  # needed by cognee's Anthropic adapter
+fastembed                  # local embeddings — no OpenAI key required
 sentence-transformers      # naive vector baseline for the benchmark
 scikit-learn               # cosine similarity / metrics helpers
 fastapi
