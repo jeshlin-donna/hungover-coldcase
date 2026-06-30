@@ -257,7 +257,7 @@ case, not a demo gimmick.
 
 | Module | What it does | Endpoint | Cognee API |
 |---|---|---|---|
-| **Messy Desk** | Drag-drop ingest any .txt/.pdf/.md | POST /ingest-file | `remember()` |
+| **Messy Desk** | Drag-drop ingest any file — text, image, audio, video, PDF, spreadsheet | POST /ingest-file | `remember()` |
 | **Evidence Board** | Force-directed graph of the case web | GET /graph | `recall(GRAPH)` |
 | **Alibi Collision** | Red edges on contradicting facts | GET /contradictions | `recall(GRAPH)` |
 | **Missing Hours** | Timeline gaps with urgency + recommendations | GET /missing-hours | `recall(GRAPH)` |
@@ -268,7 +268,37 @@ case, not a demo gimmick.
 
 ---
 
-## API Endpoints (13 total)
+## Multimodal Ingestion
+
+Every evidence type flows into the same Cognee knowledge graph via `remember()`.
+The pipeline converts each modality to text first — Cognee always sees structured text,
+which means **every file type is immediately queryable via graph traversal and vector search.**
+
+| Drop this | How it's extracted | What Cognee ingests |
+|---|---|---|
+| 🖼️ `.jpg .png .gif .webp` | **Claude Haiku vision** — forensic scene description | Text: people, vehicles, locations, objects, timestamps |
+| 🎙️ `.mp3 .wav .m4a .ogg .aac` | **Whisper tiny** (local, no API key) — full transcript | Text: verbatim speech |
+| 🎬 `.mp4 .mov .avi .webm` | **OpenCV** extracts 1 keyframe/10s (max 5) → **Claude vision** each | Text: per-timestamp frame descriptions |
+| 📄 `.pdf` | **PyMuPDF** text extraction; scanned pages → **Claude vision** per page | Text: page-by-page content |
+| 📊 `.xlsx .xls .csv` | **pandas** → structured text table | Text: column names, row values |
+| 📃 `.txt .md` | Direct text decode | Text: as-is |
+
+**Why this matters for cold cases:** a detective can drop a crime scene photo, a dashcam clip,
+a scanned handwritten witness statement, and a phone records spreadsheet — all into the same
+graph. Graph traversal then connects across all of them by entity (person, vehicle, location,
+time). That's a capability that doesn't exist in any single-modality tool.
+
+```
+crime_scene.jpg  →  Claude vision  ─┐
+interview.mp3    →  Whisper         ─┤
+dashcam.mp4      →  OpenCV + vision ─┼─→  remember()  →  Cognee graph  →  recall(GRAPH)
+warrant.pdf      →  PyMuPDF         ─┤
+phone_records.csv →  pandas         ─┘
+```
+
+---
+
+## API Endpoints (15 total)
 
 | Method | Path | Description |
 |---|---|---|
@@ -286,51 +316,67 @@ case, not a demo gimmick.
 | POST | `/nexus` | Shortest path between two entities |
 | POST | `/interrogation` | Generate interrogation strategy |
 | POST | `/whatif` | Recalculate confidence for a hypothesis |
-| POST | `/ingest-file` | Drag-drop file ingestion (multipart) |
+| POST | `/ingest-file` | Multimodal file ingestion — image/audio/video/PDF/spreadsheet/text |
 
 ---
 
 ## Architecture
 
 ```
-data/raw/  (250 synthetic noise docs)    data/hero_case/  (11 docs — Daniel Marsh series)
-              │                                     │
-              └─────────────┬───────────────────────┘
-                      scripts/ingest.py
-                      remember() / cognify()
-                            │
-                  backend/memory_service.py
-                  ┌─────────────────────────┐
-                  │  remember()             │   ← add() + cognify(), dataset-scoped
-                  │  recall(GRAPH/VECTOR)   │   ← GRAPH_COMPLETION / RAG_COMPLETION
-                  │  improve(session_ids)   │   ← hunch → permanent memory
-                  │  forget(dataset)        │   ← legal expungement
-                  └──────────┬──────────────┘
-                             │
-                  backend/main.py  (FastAPI)
-                  • live mode: real Cognee answers
-                  • degraded mode: mock JSON (never hard-crashes)
-                             │ REST / JSON
-                  frontend/  (React + Vite)
-              ┌──────────────────────────────────────┐
-              │  Case Graph     (force-directed)      │
-              │  Graph vs Vector (3-col compare)      │
-              │  Timeline       (temporal slider)     │
-              │  Missing Hours  (urgency badges)      │
-              │  Nexus Point    (entity path)         │
-              │  Interrogation  (trap questions)      │
-              │  What-If        (confidence sandbox)  │
-              │  Upload         (drag-drop ingest)    │
-              └──────────────────────────────────────┘
-                             │
-                  benchmark/
-                  naive_vector vs cognee_vector vs cognee_graph
-                  Recall@3, Recall@5, MRR · chart.png
+┌─────────────────────────── Evidence Sources ───────────────────────────────┐
+│  data/raw/ (250 noise docs)        data/hero_case/ (11 docs)               │
+│  🖼️  crime scene photos             🎙️  911 call recordings                 │
+│  🎬  CCTV / dashcam footage         📄  scanned warrants / reports          │
+│  📊  phone records / financials     📃  witness statements                  │
+└──────────────────────────────┬─────────────────────────────────────────────┘
+                               │
+              ┌────────────────▼──────────────────┐
+              │   Multimodal Extraction Layer       │
+              │   image  → Claude Haiku vision      │
+              │   audio  → Whisper (local)          │
+              │   video  → OpenCV frames + vision   │
+              │   pdf    → PyMuPDF + vision (OCR)   │
+              │   xlsx   → pandas → structured text │
+              └────────────────┬──────────────────┘
+                               │ all modalities → text
+              ┌────────────────▼──────────────────┐
+              │   backend/memory_service.py         │
+              │   remember()  → add() + cognify()   │
+              │   recall()    → GRAPH / RAG mode    │
+              │   improve()   → session → graph     │
+              │   forget()    → dataset expunge     │
+              └────────────────┬──────────────────┘
+                               │
+              ┌────────────────▼──────────────────┐
+              │   Cognee 1.2.2 (self-hosted OSS)    │
+              │   LanceDB 0.26.0  (vector store)    │
+              │   Kuzu / Ladybug  (graph store)     │
+              │   fastembed       (local embeddings)│
+              └────────────────┬──────────────────┘
+                               │
+              ┌────────────────▼──────────────────┐
+              │   backend/main.py  (FastAPI)        │
+              │   15 endpoints · live / degraded    │
+              └────────────────┬──────────────────┘
+                               │ REST / JSON
+              ┌────────────────▼──────────────────┐
+              │   frontend/  (React + Vite)         │
+              │   Case Graph · Compare · Timeline   │
+              │   Missing Hours · Nexus · Interrog. │
+              │   What-If · Upload (multimodal)     │
+              └───────────────────────────────────┘
+                               │
+              ┌────────────────▼──────────────────┐
+              │   benchmark/                        │
+              │   naive_vector vs cognee_vector     │
+              │   vs cognee_graph                   │
+              │   Recall@3/5 · MRR · chart.png      │
+              └───────────────────────────────────┘
 ```
 
 **Stack:** Python 3.11 · Cognee 1.2.2 (OSS, self-hosted) · LanceDB 0.26.0 · fastembed
-(local embeddings — no OpenAI key needed) · Kuzu (graph store) · FastAPI · React + Vite ·
-react-force-graph-2d · Claude Haiku (LLM backbone)
+(local embeddings) · Kuzu (graph store) · FastAPI · React + Vite · react-force-graph-2d ·
+Claude Haiku (LLM + vision) · Whisper tiny (audio) · OpenCV (video) · PyMuPDF (PDF) · pandas (data)
 
 ---
 
@@ -342,6 +388,10 @@ react-force-graph-2d · Claude Haiku (LLM backbone)
 - **fastembed** — local BAAI/bge-small-en-v1.5 embeddings; no API key required for embedding;
   set `EMBEDDING_PROVIDER=fastembed` in `.env`
 - **COGNEE_SKIP_CONNECTION_TEST=true** — bypasses the 30-second LLM connectivity probe at startup
+- **openai-whisper** — runs Whisper tiny model locally (~75MB download on first use); no API key
+- **opencv-python-headless** — video frame extraction; headless variant avoids GUI deps
+- **pymupdf** — fast PDF text extraction; renders scanned pages as images for Claude vision
+- **pandas + openpyxl** — parses .xlsx/.xls/.csv into structured text for graph ingestion
 
 ---
 
