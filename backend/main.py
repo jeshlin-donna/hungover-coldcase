@@ -12,6 +12,7 @@ Run (on a machine with deps):  uvicorn backend.main:app --reload --port 8000
 """
 from __future__ import annotations
 
+import base64
 import json
 import re
 from pathlib import Path
@@ -19,6 +20,49 @@ from pathlib import Path
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+IMAGE_TYPES = {
+    "image/jpeg": "image/jpeg",
+    "image/jpg": "image/jpeg",
+    "image/png": "image/png",
+    "image/gif": "image/gif",
+    "image/webp": "image/webp",
+}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+def _media_type_for(filename: str) -> str | None:
+    ext = Path(filename).suffix.lower()
+    return {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".png": "image/png", ".gif": "image/gif",
+            ".webp": "image/webp"}.get(ext)
+
+async def describe_image(content: bytes, filename: str, media_type: str) -> str:
+    """Send image to Claude vision and get a forensic description for Cognee ingestion."""
+    import os, anthropic as ant
+    client = ant.Anthropic(api_key=os.getenv("LLM_API_KEY"))
+    b64 = base64.standard_b64encode(content).decode()
+    msg = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1024,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64",
+                                              "media_type": media_type,
+                                              "data": b64}},
+                {"type": "text", "text": (
+                    f"You are analyzing evidence for a cold case investigation. "
+                    f"Image filename: {filename}\n\n"
+                    "Describe this image in forensic detail. Note: any visible people "
+                    "(physical description, clothing, distinguishing features), vehicles "
+                    "(make, model, color, license plates), locations or addresses, objects "
+                    "of interest, any visible text or timestamps, and anything potentially "
+                    "relevant to a criminal investigation. Be specific and factual."
+                )}
+            ]
+        }]
+    )
+    return msg.content[0].text
 
 ROOT = Path(__file__).resolve().parents[1]
 MOCK = ROOT / "frontend" / "mock"
@@ -404,13 +448,37 @@ async def whatif(req: WhatIfReq):
 @app.post("/ingest-file")
 async def ingest_file(file: UploadFile = File(...)):
     content = await file.read()
-    text = content.decode("utf-8", errors="ignore")
-    if LIVE:
-        await mem.remember(text, dataset=DATASET)
+    media_type = _media_type_for(file.filename or "")
+    is_image = media_type is not None
+    image_description = None
+
+    if is_image:
+        if LIVE:
+            try:
+                image_description = await describe_image(content, file.filename, media_type)
+                ingest_text = (
+                    f"IMAGE EVIDENCE — {file.filename}\n\n"
+                    f"Forensic description extracted by AI vision analysis:\n{image_description}"
+                )
+                await mem.remember(ingest_text, dataset=DATASET)
+            except Exception as e:
+                image_description = f"[Vision analysis unavailable: {e}]"
+        else:
+            image_description = (
+                "Mock mode: image received. In live mode, Claude vision would extract "
+                "a forensic description and ingest it into the knowledge graph."
+            )
+    else:
+        text = content.decode("utf-8", errors="ignore")
+        if LIVE:
+            await mem.remember(text, dataset=DATASET)
+
     return {
         "ok": True,
         "filename": file.filename,
         "size_bytes": len(content),
         "dataset": DATASET,
-        "mode": "live" if LIVE else "degraded"
+        "mode": "live" if LIVE else "degraded",
+        "type": "image" if is_image else "text",
+        "image_description": image_description,
     }
