@@ -1,5 +1,5 @@
-// Single place that talks to the backend. Point BASE at the stdlib mock server
-// (python scripts/mock_server.py) OR the FastAPI backend — same routes, same shapes.
+// Single place that talks to the backend.
+// The backend auto-detects live vs degraded and serves mock-compatible data on port 8000.
 const BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
 async function get(path) {
@@ -7,6 +7,7 @@ async function get(path) {
   if (!r.ok) throw new Error(`${path} -> ${r.status}`);
   return r.json();
 }
+
 async function post(path, body) {
   const r = await fetch(`${BASE}${path}`, {
     method: "POST",
@@ -21,8 +22,9 @@ export const api = {
   health: () => get("/health"),
   graph: () => get("/graph"),
   timeline: () => get("/timeline"),
+  contradictions: () => get("/contradictions"),
   benchmark: () => get("/benchmark"),
-  compare: (q) => get(`/recall/compare?query=${encodeURIComponent(q)}`),
+  compare: (query) => get(`/recall/compare?query=${encodeURIComponent(query)}`),
   recall: (query, mode) => post("/recall", { query, mode }),
   hunch: (text, session_id) => post("/hunch", { text, session_id }),
   resolve: (session_ids) => post("/resolve", { session_ids }),
