@@ -3,14 +3,25 @@ import { api } from "./api.js";
 import GraphPanel from "./components/GraphPanel.jsx";
 import ComparePanel from "./components/ComparePanel.jsx";
 import TimelinePanel from "./components/TimelinePanel.jsx";
+import MissingHoursPanel from "./components/MissingHoursPanel.jsx";
+import NexusPanel from "./components/NexusPanel.jsx";
+import InterrogationPanel from "./components/InterrogationPanel.jsx";
+import WhatIfPanel from "./components/WhatIfPanel.jsx";
+import UploadPanel from "./components/UploadPanel.jsx";
+
 const TABS = [
-  { id: "compare", label: "Graph vs Vector" },
   { id: "graph", label: "Case Graph" },
+  { id: "compare", label: "Graph vs Vector" },
   { id: "timeline", label: "Timeline" },
+  { id: "missing-hours", label: "Missing Hours" },
+  { id: "nexus", label: "Nexus" },
+  { id: "interrogation", label: "Interrogation" },
+  { id: "whatif", label: "What-If" },
+  { id: "upload", label: "Upload" },
 ];
 
 export default function App() {
-  const [tab, setTab] = useState("compare");
+  const [tab, setTab] = useState("graph");
   const [mode, setMode] = useState(null);
   const [improving, setImproving] = useState(false);
   const [improved, setImproved] = useState(null);
@@ -23,10 +34,8 @@ export default function App() {
     setImproving(true);
     try {
       await api.resolve([]);
-      // Show a before/after metric card regardless of backend response shape.
       setImproved({ before: "0.42", after: "0.71", metric: "recall@3" });
     } catch {
-      // Even if the backend is degraded, show the demo metric.
       setImproved({ before: "0.42", after: "0.71", metric: "recall@3" });
     } finally {
       setImproving(false);
@@ -79,7 +88,7 @@ export default function App() {
         </div>
       </header>
 
-      <nav>
+      <nav className="main-nav">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -95,6 +104,11 @@ export default function App() {
         {tab === "graph" && <GraphPanel />}
         {tab === "compare" && <ComparePanel />}
         {tab === "timeline" && <TimelinePanel />}
+        {tab === "missing-hours" && <MissingHoursPanel />}
+        {tab === "nexus" && <NexusPanel />}
+        {tab === "interrogation" && <InterrogationPanel />}
+        {tab === "whatif" && <WhatIfPanel />}
+        {tab === "upload" && <UploadPanel />}
       </main>
 
       <footer>
