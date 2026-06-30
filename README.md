@@ -67,11 +67,10 @@ data/ (hero case + public corpus)
 ## Quickstart
 
 ```bash
-# 1. Priority 0 — verify the SDK (on a machine that can pip install):
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env          # add LLM_API_KEY
-python backend/smoke_test.py  # prints real SDK shapes -> docs/API_NOTES.md
+# 1. Priority 0 — one command (on a machine that can pip install):
+./setup.sh                    # venv + deps + env check, then runs the smoke test
+#   → edit .env to add LLM_API_KEY when prompted, then: ./setup.sh --smoke
+#   smoke_test prints the real SDK return shapes -> paste into docs/API_NOTES.md
 
 # 2. The live demo (your stage script):
 python demo/demo.py --reset

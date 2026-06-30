@@ -93,11 +93,10 @@ The judges are **Cognee's own engineers**. They've seen 50 "chatbot-with-memory"
 
 ### DAY 2 — Tue Jun 30 (TODAY): De-risk + foundations  🎯 *Goal: Cognee provably runs, repo stands up, corpus identified*
 
-**Priority 0 — prove the SDK works before anything else [JESH] (~60 min)**
-- [ ] `python -m venv .venv && source .venv/bin/activate` (3 min)
-- [ ] `pip install cognee sentence-transformers fastapi uvicorn python-dotenv` (5 min)
-- [ ] Get an `LLM_API_KEY` (OpenAI key, or configure a local/cheaper provider per Cognee setup docs) → `.env` (10 min)
-- [ ] Run the smoke test: `remember("...") → recall("...")` end-to-end against the **live** SDK (15 min)
+**Priority 0 — prove the SDK works before anything else [JESH] (~30 min, one command)**
+- [ ] Run **`./setup.sh`** — auto: Python≥3.10 check, venv, `pip install -r requirements.txt`, `.env` scaffold (5 min)
+- [ ] Add `LLM_API_KEY` to `.env` (OpenAI key, or a local/cheaper provider per Cognee setup docs), then `./setup.sh --smoke` (10 min)
+- [ ] Smoke test runs `remember → recall → improve → forget` against the **live** SDK (auto via setup.sh)
 - [ ] **Record the real return shapes** of `recall()` for each search type into `docs/API_NOTES.md` — this is what the old scaffold guessed at; we verify it for real (15 min)
 - [ ] Confirm `improve(session_ids=...)` and `forget(dataset=...)` signatures actually run (12 min)
 

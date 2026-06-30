@@ -22,6 +22,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🚧 blocked
 | `backend/main.py` — FastAPI, all contract routes | Jesh | Compiles clean; auto **live/degraded** (serves mock if no SDK) so it runs today |
 | `frontend/` — Vite + React, 3 panels + graph viz | Jesh | Scaffold complete (graph / 3-way compare / timeline); runs against mock server now |
 | `README.md` — story-first submission front door | Jesh | Drafted; benchmark numbers are placeholders until live run |
+| `setup.sh` — one-command Priority-0 bootstrap | Jesh | Syntax-checked; picks Python ≥3.10, venv+deps+env+smoke test |
 
 ---
 
@@ -37,7 +38,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🚧 blocked
 ## ⬜ To be done (priority order)
 | # | Item | Owner | Blocked by |
 |---|---|---|---|
-| 1 | **Priority 0:** run `smoke_test.py` on a personal machine, fill `docs/API_NOTES.md`, pin every `# VERIFY` in `memory_service.py` | Jesh/Sam | — |
+| 1 | **Priority 0:** run **`./setup.sh`** on a personal machine (venv+deps+key+smoke test), fill `docs/API_NOTES.md`, pin every `# VERIFY` in `memory_service.py` | Jesh/Sam | — |
 | 2 | Source public noise corpus into `data/raw/` (200–500 records) + `data/SOURCES.md` | Sam | — |
 | 3 | ✅ `demo/demo.py` built — **live-run it once Priority 0 lands** to confirm against the real SDK | Jesh | #1 |
 | 4 | ✅ FastAPI scaffolded — **verify live-wiring** once SDK pinned; real `/graph` from Cognee `INSIGHTS` still TODO | Sam/Jesh | #1 |
