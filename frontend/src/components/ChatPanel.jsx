@@ -5,7 +5,14 @@ const WELCOME_MSG = {
   role: "assistant",
   text: "Ask anything about the case. Answers are drawn from the knowledge graph via Cognee GRAPH_COMPLETION — every fact is sourced from ingested evidence.",
   sources: [],
+  showSuggestions: true,
 };
+
+const SUGGESTED_QUESTIONS = [
+  "Who appears across both Millbrook and Riverside cases?",
+  "What was the suspect's alibi and why does it fail?",
+  "What forensic evidence links the three burglaries?",
+];
 
 const SUGGESTED = "Who was present at both the Millbrook Heights and Riverside View burglaries?";
 
@@ -107,6 +114,20 @@ export default function ChatPanel() {
         {messages.map((msg, i) => (
           <div key={i} className={`chat-msg ${msg.role}`}>
             <div className="chat-msg-text">{msg.text}</div>
+            {msg.showSuggestions && (
+              <div className="chat-suggestions">
+                {SUGGESTED_QUESTIONS.map((q) => (
+                  <button
+                    key={q}
+                    className="chat-suggestion-chip"
+                    onClick={() => { setInput(q); sendMessage(q); }}
+                    disabled={loading}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
             {msg.sources && msg.sources.length > 0 && (
               <div className="chat-sources">
                 {msg.sources.map((s) => (
