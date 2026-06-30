@@ -70,8 +70,9 @@ async def main():
     except Exception as e:
         print(f"expunge FAILED -> {type(e).__name__}: {e}")
 
-    print("\nDONE. Copy the real types/shapes above into docs/API_NOTES.md and "
-          "fix any # VERIFY in memory_service.py.")
+    print("\nDONE. Signatures are already verified against source — what matters here is "
+          "the RecallResponse shape printed above. If results don't contain the 'DOC_ID:' "
+          "strings, switch benchmark/main extraction to the response's source fields.")
 
 
 if __name__ == "__main__":

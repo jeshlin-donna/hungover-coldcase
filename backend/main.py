@@ -86,7 +86,7 @@ def health():
 
 @app.get("/graph")
 def graph():
-    # TODO(live): derive from Cognee INSIGHTS once Priority 0 pins return shape (# VERIFY).
+    # TODO(live): derive from Cognee TRIPLET_COMPLETION (this version has no INSIGHTS).
     # The curated graph is faithful to the hero case and is the reliable demo visual.
     return mock("graph.json")
 

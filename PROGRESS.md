@@ -13,7 +13,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🚧 blocked
 | Concept locked: Cold Case Connector (Open Source track) | All | Cross-jurisdiction siloed-evidence story |
 | `EXECUTION_PLAN.md` — plan, owners, timelines, scoring map | Jesh | |
 | Repo created + pushed (private) | Jesh | github.com/jeshlin-donna/hungover-coldcase, branch `main` |
-| `backend/memory_service.py` — abstraction over all 4 Cognee APIs | Jesh | ⚠️ has `# VERIFY` spots until Priority 0 runs |
+| `backend/memory_service.py` — abstraction over all 4 Cognee APIs | Jesh | ✅ **signatures verified against cognee source** — `# VERIFY` resolved; caught `INSIGHTS`→`TRIPLET_COMPLETION` + sync-cognify |
 | `backend/smoke_test.py` — Priority 0 live-SDK check | Jesh | Run on a personal machine |
 | `data/hero_case/` — 9 synthetic case docs + README | Sam/Jesh | Tool/vehicle/MO split across 2 jurisdictions |
 | `benchmark/` — 3-way harness + 16 queries | Jesh | Pure-Python logic verified locally (docs load, ID extract, metrics) |
@@ -39,7 +39,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🚧 blocked
 ## ⬜ To be done (priority order)
 | # | Item | Owner | Blocked by |
 |---|---|---|---|
-| 1 | **Priority 0:** run **`./setup.sh`** on a personal machine (venv+deps+key+smoke test), fill `docs/API_NOTES.md`, pin every `# VERIFY` in `memory_service.py` | Jesh/Sam | — |
+| 1 | **Priority 0 — mostly DONE via source:** signatures verified + pinned, `API_NOTES.md` filled. **Remaining:** run `./setup.sh --smoke` once with a key to confirm the `RecallResponse` runtime shape (for benchmark id-extraction) | Jesh/Sam | — |
 | 2 | Source public noise corpus into `data/raw/` (200–500 records) + `data/SOURCES.md` | Sam | — |
 | 3 | ✅ `demo/demo.py` built — **live-run it once Priority 0 lands** to confirm against the real SDK | Jesh | #1 |
 | 4 | ✅ FastAPI scaffolded — **verify live-wiring** once SDK pinned; real `/graph` from Cognee `INSIGHTS` still TODO | Sam/Jesh | #1 |
