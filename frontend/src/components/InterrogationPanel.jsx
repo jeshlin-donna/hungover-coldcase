@@ -144,7 +144,7 @@ export default function InterrogationPanel() {
 
               <p className="q-text">{q.text}</p>
 
-              {isExpanded && (
+              <div className={`question-body ${isExpanded ? "expanded" : "collapsed"}`}>
                 <div className="q-detail">
                   <div className="q-expected">
                     <span className="q-detail-label">Expected response</span>
@@ -172,7 +172,7 @@ export default function InterrogationPanel() {
                     </div>
                   )}
                 </div>
-              )}
+              </div>
             </div>
           );
         })}

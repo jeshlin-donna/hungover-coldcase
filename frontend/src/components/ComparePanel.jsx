@@ -16,6 +16,12 @@ const PRESETS = [
   },
 ];
 
+const QUICK_PRESETS = [
+  "Cross-jurisdiction suspect link",
+  "Alibi contradiction evidence",
+  "Forensic tool-mark pattern",
+];
+
 const COLS = [
   { key: "naive_vector", title: "Naive vector", sub: "cosine top-k" },
   { key: "cognee_vector", title: "Cognee · vector", sub: "RAG_COMPLETION" },
@@ -147,16 +153,44 @@ export default function ComparePanel() {
         ))}
       </div>
 
-      <div className="row" style={{ marginBottom: 8 }}>
-        <input
+      <div className="presets" style={{ marginBottom: 8 }}>
+        {QUICK_PRESETS.map((label) => (
+          <button
+            key={label}
+            onClick={() => { setQ(label); setActivePreset(-1); }}
+            style={{ fontSize: 12, padding: "5px 12px" }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="row" style={{ marginBottom: 8, alignItems: "flex-start" }}>
+        <textarea
+          rows={2}
           value={q}
           onChange={(e) => { setQ(e.target.value); setActivePreset(-1); }}
           className="query"
           placeholder="Ask a question about the cases…"
+          style={{ resize: "none" }}
         />
-        <button onClick={() => run(q, dataset)} disabled={loading}>
-          {loading ? "Retrieving…" : "Compare"}
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+          <button onClick={() => run(q, dataset)} disabled={loading}>
+            {loading ? "Retrieving…" : "Compare"}
+          </button>
+          <div style={{ display: "flex", gap: 4 }}>
+            <span style={{ fontSize: 11, color: "var(--muted)", alignSelf: "center" }}>
+              {q.length} chars
+            </span>
+            <button
+              onClick={() => { setQ(""); setActivePreset(-1); }}
+              style={{ fontSize: 13, padding: "3px 8px", lineHeight: 1 }}
+              title="Clear input"
+            >
+              ×
+            </button>
+          </div>
+        </div>
       </div>
 
       {q && (

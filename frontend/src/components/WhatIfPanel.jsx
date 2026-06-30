@@ -73,8 +73,8 @@ function ConfidenceBar({ label, before, after, color }) {
           <span className="conf-val-label">Before {before}%</span>
           <div className="confidence-bar-track">
             <div
-              className="confidence-bar before"
-              style={{ width: `${before}%`, background: color + "99" }}
+              className="confidence-bar-fill before"
+              style={{ width: `${before}%` }}
             />
           </div>
         </div>
@@ -82,8 +82,8 @@ function ConfidenceBar({ label, before, after, color }) {
           <span className="conf-val-label">After {after}%</span>
           <div className="confidence-bar-track">
             <div
-              className="confidence-bar after"
-              style={{ width: `${after}%`, background: color }}
+              className="confidence-bar-fill after"
+              style={{ width: `${after}%` }}
             />
           </div>
         </div>

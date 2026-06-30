@@ -103,7 +103,7 @@ export default function MissingHoursPanel() {
             </span>
           </p>
         </div>
-        <div className="mh-count-badge">{d.gaps.length} unaccounted gaps</div>
+        <div className="mh-count-badge">{d.gaps.length} unaccounted periods detected</div>
       </div>
 
       <div className="gap-list">
