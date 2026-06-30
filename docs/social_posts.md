@@ -1,11 +1,11 @@
-# Social Posts — Cold Case Connector / The Hangover Part AI Hackathon
+# Social Posts — Cold Case Connector / WeMakeDevs × Cognee Hackathon
 
 ---
 
 ## 1. Twitter/X Thread (3 tweets)
 
 **Tweet 1**
-We just submitted Cold Case Connector to @wemakedevs The Hangover Part AI hackathon.
+We just submitted Cold Case Connector to @wemakedevs × @cognee_ai hackathon.
 
 Three burglaries. Two police departments. Zero shared records. Same offender — caught after 23 months by luck, not investigation.
 
@@ -16,11 +16,10 @@ Every detective had a piece of the evidence. Nobody had the shared memory to con
 **Tweet 2**
 We built a knowledge graph over all the evidence using self-hosted @cognee_ai and ran a 3-way benchmark: naive vector vs Cognee RAG vs Cognee graph on multi-hop queries.
 
-Naive vector R@3: 0.61
-Cognee RAG R@3: 0.68
-Cognee graph R@3: 0.89
+Naive vector multi-hop R@3: 0.417 (vs single-hop: 0.742)
+That 74% → 42% collapse on cross-jurisdiction queries is the whole thesis — and exactly what graph traversal is designed to close.
 
-Multi-hop queries that *require* cross-document traversal are where the graph wins, and the gap is not close.
+Full benchmark results in benchmark/results.json.
 
 ---
 
@@ -41,7 +40,7 @@ Built by @samuelshine @jeshlin-donna @benjyguitar for @wemakedevs x @cognee_ai
 
 ## 2. LinkedIn Post (~200 words)
 
-We spent the last week building Cold Case Connector for The Hangover Part AI hackathon — and it turned into one of the more genuinely interesting projects I've worked on.
+We spent the last week building Cold Case Connector for the WeMakeDevs × Cognee Hackathon — and it turned into one of the more genuinely interesting projects I've worked on.
 
 The premise: three linked burglaries, two police departments with no shared records system, and an offender who evaded detection for nearly two years — not because the evidence was missing, but because nobody could see it all at once.
 

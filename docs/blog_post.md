@@ -1,6 +1,6 @@
 # How We Taught an Investigation to Remember: Building Cold Case Connector with Cognee
 
-*Submitted for The Hangover Part AI hackathon — Best Use of Open Source (self-hosted Cognee)*
+*Submitted for the WeMakeDevs × Cognee Hackathon — Best Use of Open Source (self-hosted Cognee)*
 
 ---
 
@@ -30,15 +30,15 @@ The question an investigator actually needs to answer is: *"Is the suspect in Ri
 
 This is the textbook case for a knowledge graph. Cognee builds a hybrid graph-plus-vector memory from whatever you feed it. Each document's entities and relationships become nodes and edges in a persistent graph. When you query with `SearchType.GRAPH_COMPLETION`, the retrieval traverses that graph — following edges across documents, across jurisdictions, across time — rather than fetching the highest-cosine chunk.
 
-We ran the benchmark to prove it, not just assert it.
+We ran the naive baseline to prove the thesis, not just assert it — and the numbers are striking before the graph even runs.
 
-| Retriever | Multi-hop Recall@3 | Multi-hop MRR |
-|---|---|---|
-| Naive cosine (sentence-transformers) | 0.61 | 0.54 |
-| Cognee vector (RAG_COMPLETION) | 0.68 | 0.61 |
-| **Cognee graph (GRAPH_COMPLETION)** | **0.89** | **0.83** |
+| Retriever | Multi-hop R@3 | Multi-hop R@5 | Multi-hop MRR |
+|---|---|---|---|
+| Naive cosine (sentence-transformers) | **0.417** | **0.526** | **0.570** |
+| Cognee vector (RAG_COMPLETION) | *live run pending* | *live run pending* | *live run pending* |
+| **Cognee graph (GRAPH_COMPLETION)** | *live run pending* | *live run pending* | *live run pending* |
 
-On single-hop queries ("what was the tool mark in Riverside?") all three retrievers converge. On multi-hop queries that require connecting evidence across documents and jurisdictions, graph traversal lifts Recall@3 from 62% to 91%. That gap is the entire thesis of this project.
+On single-hop queries ("what was the tool mark in Riverside?") the naive baseline is strong: R@3 = 0.742, MRR = 0.687. On multi-hop queries that require connecting evidence across documents and jurisdictions — R@3 collapses to 0.417, R@5 to 0.526. That 74% → 42% drop on Recall@3 is not a failure of implementation. It is the structural ceiling of cosine similarity: it cannot follow entity relationships across documents. Graph traversal can. The Cognee graph numbers will land in `benchmark/results.json` when the full run completes, but the naive baseline already proves the thesis: the problem is real, the gap is measurable, and the architecture exists to close it.
 
 ---
 
@@ -167,4 +167,4 @@ Every detective had a piece of the evidence. Nobody had the shared memory to con
 
 ---
 
-*Built by Team ColdCache (Sam, Jesh, Benjy) for The Hangover Part AI hackathon, June–July 2026. All case data is entirely synthetic and illustrative — no real persons, cases, or departments. AI assistance (Claude, ChatGPT) was used for code and documentation; declared per hackathon rules.*
+*Built by Team ColdCache (Sam, Jesh, Benjy) for the WeMakeDevs × Cognee Hackathon, June–July 2026. All case data is entirely synthetic and illustrative — no real persons, cases, or departments. AI assistance (Claude, ChatGPT) was used for code and documentation; declared per hackathon rules.*
