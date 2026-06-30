@@ -10,11 +10,13 @@ import InterrogationPanel from "./components/InterrogationPanel.jsx";
 import WhatIfPanel from "./components/WhatIfPanel.jsx";
 import UploadPanel from "./components/UploadPanel.jsx";
 import SuspectTimelinePanel from "./components/SuspectTimelinePanel.jsx";
+import CogneePanel from "./components/CogneePanel.jsx";
 
 const TABS = [
   { id: "chat",             label: "Case Chat",        icon: "💬" },
   { id: "graph",            label: "Evidence Board",   icon: "🕸️" },
   { id: "compare",          label: "Graph vs Vector",  icon: "⚖️" },
+  { id: "cognee",           label: "Cognee APIs",      icon: "🧠" },
   { id: "timeline",         label: "Timeline",         icon: "📅" },
   { id: "missing-hours",    label: "Missing Hours",    icon: "🕳️" },
   { id: "nexus",            label: "Nexus Point",      icon: "🔗" },
@@ -232,6 +234,7 @@ export default function App() {
             />
           )}
           {tab === "compare" && <ComparePanel />}
+          {tab === "cognee" && <CogneePanel />}
           {tab === "timeline" && <TimelinePanel />}
           {tab === "missing-hours" && <MissingHoursPanel />}
           {tab === "nexus" && <NexusPanel />}
