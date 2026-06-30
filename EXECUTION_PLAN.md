@@ -4,7 +4,7 @@
 
 > Three burglaries. Two police departments. Zero shared memory. Caught after 23 months by luck — not investigation. Cognee would have connected them in one query.
 
-- **Team:** HungOver (3) — Jesh (AI/backend, lead), Sam (AI/backend), Benjy (frontend)
+- **Team:** HungOver (3) — **Sam (lead · AI/backend)**, Jesh (AI/backend), Benjy (frontend / product). Three equal owners — backend depth, retrieval rigor, and product experience each independently decide whether we win.
 - **Track:** Best Use of **Open Source** (self-hosted Cognee) → MacBook per member
 - **Window:** Jun 29 – Jul 5, 2026. We're on **Day 2 (Jun 30)**. Submission target: **Jul 5 EOD**, with Jul 5 as buffer.
 - **AI assistant disclosure:** We use Claude/ChatGPT for code + docs. **This MUST be declared in the submission** (non-disclosure = DQ).
@@ -15,7 +15,7 @@
 
 The judges are **Cognee's own engineers**. They've seen 50 "chatbot-with-memory" submissions. We win by being the one submission that:
 
-1. **Earns the graph win empirically.** Not a 3-file scripted trick — a real, scaled corpus where Cognee's graph traversal beats naive vector search on *multi-hop* queries, with numbers (Recall@k, MRR). This is our moat. Jesh + Sam are AI research engineers; nobody else will produce a credible benchmark.
+1. **Earns the graph win empirically.** Not a 3-file scripted trick — a real, scaled corpus where Cognee's graph traversal beats naive vector search on *multi-hop* queries, with numbers (Recall@k, MRR). A credible benchmark is one half of the moat; the other half is a product that makes the win *obvious* on screen in 30 seconds. Both halves are decisive — neither wins alone.
 2. **Uses all four lifecycle APIs for real reasons** — `remember` (ingest at scale), `recall` (graph vs vector modes), `improve()` (a metric that climbs *live* when a lead is confirmed), `forget()` (record **expungement** — a genuine legal use case, not a throwaway).
 3. **Tells one gripping, specific story on top** — the Daniel Marsh burglary series — so the demo lands emotionally in 30 seconds.
 4. **Looks polished** — a real UI with a live graph, 3-way side-by-side retrieval, and a clean before/after.
@@ -72,9 +72,11 @@ The judges are **Cognee's own engineers**. They've seen 50 "chatbot-with-memory"
 
 ## 2. Roles & ownership
 
+**Three equal owners.** Each pillar independently decides the outcome — there is no "support" role here. A flawless benchmark behind a clumsy UI loses; a beautiful UI with no real Cognee depth loses. We need all three at full strength.
+
+- **Sam (lead · AI/backend):** corpus sourcing + cleaning, hero case authoring, ingestion pipeline (async status polling), FastAPI endpoints, `forget()`/expungement flow, demo orchestration, blog post (side track). Runs standups and keeps the plan on track.
 - **Jesh (AI/backend):** Cognee core integration, `memory_service` abstraction, the benchmark (methodology + harness + chart), the `improve()` self-learning loop, README technical sections, submission form. Owns Priority 0.
-- **Sam (AI/backend):** corpus sourcing + cleaning, the hero case authoring, ingestion pipeline (async status polling), FastAPI endpoints, `forget()`/expungement flow, demo orchestration script, blog post (side track).
-- **Benjy (frontend):** React app, graph visualization, 3-way comparison UI, timeline + expungement toggle, demo video edit, social posts (side track).
+- **Benjy (frontend / product):** the entire user-facing experience — React app, live graph visualization, 3-way comparison UI, timeline + expungement/improve animations, and the 2-min demo video the judges actually watch. Owns how the whole project *reads* (UX + Presentation = 2 of the 6 scoring criteria). Social posts (side track).
 - **Shared:** daily 15-min standup (async on WhatsApp ok), README, final QA.
 
 ---

@@ -1,7 +1,7 @@
 # HungOver — Progress Tracker
 
 > Living status doc. Updated as we go. Detailed plan lives in `EXECUTION_PLAN.md`.
-> **Last updated:** 2026-06-30 (Day 2)
+> **Last updated:** 2026-06-30 (Day 2) — added `demo/demo.py`; Sam set as lead
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo · 🚧 blocked
 
@@ -18,6 +18,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🚧 blocked
 | `data/hero_case/` — 9 synthetic case docs + README | Sam/Jesh | Tool/vehicle/MO split across 2 jurisdictions |
 | `benchmark/` — 3-way harness + 16 queries | Jesh | Pure-Python logic verified locally (docs load, ID extract, metrics) |
 | `docs/API_CONTRACT.md` + `frontend/mock/` + `scripts/mock_server.py` | Jesh | Mock server verified running (stdlib, no pip) |
+| `demo/demo.py` — 5-phase narrated live demo | Jesh | Syntax-verified; runs once Priority 0 pins the SDK (`# VERIFY`) |
 
 ---
 
@@ -33,7 +34,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🚧 blocked
 |---|---|---|---|
 | 1 | **Priority 0:** run `smoke_test.py` on a personal machine, fill `docs/API_NOTES.md`, pin every `# VERIFY` in `memory_service.py` | Jesh/Sam | — |
 | 2 | Source public noise corpus into `data/raw/` (200–500 records) + `data/SOURCES.md` | Sam | — |
-| 3 | `demo/demo.py` — 5-phase narrated run (ingest → hunch → multi-hop recall → resolve/improve → expunge) | Jesh | (builds on #1, but can draft now via memory_service) |
+| 3 | ✅ `demo/demo.py` built — **live-run it once Priority 0 lands** to confirm against the real SDK | Jesh | #1 |
 | 4 | FastAPI backend — real version of the mock, wired to `memory_service` | Sam | #1 |
 | 5 | Frontend: Vite + 3 panels (graph / 3-way compare / timeline) against mock | Benjy | — (mock ready) |
 | 6 | Frontend: wire to real backend; expungement + improve animations | Benjy | #4 |
@@ -56,7 +57,8 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🚧 blocked
 
 ---
 
-## Team
-- **Jesh** (`jeshlin-donna`) — AI/backend lead
-- **Sam** (`samuelshine`) — AI/backend
-- **Benjy** (`benjyguitar`) — frontend
+## Team — three equal owners
+Backend depth, retrieval rigor, and product experience are each decisive; no piece is "support work." We win or lose on all three together.
+- **Sam** (`samuelshine`) — Lead · AI / backend
+- **Jesh** (`jeshlin-donna`) — AI / backend
+- **Benjy** (`benjyguitar`) — frontend / product experience
