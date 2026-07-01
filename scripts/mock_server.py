@@ -43,6 +43,24 @@ class Handler(BaseHTTPRequestHandler):
         qs = parse_qs(urlparse(self.path).query)
         if path == "/graph":
             return self._send(load("graph.json"))
+        if path == "/graph/temporal":
+            time = qs.get("time", [None])[0]
+            full = load("graph.json")
+            if not time:
+                return self._send(full)
+            nodes = full.get("nodes", [])
+            visible_ids = {n["id"] for n in nodes if not n.get("date") or n["date"] <= time}
+            filtered_nodes = [n for n in nodes if n["id"] in visible_ids]
+            filtered_edges = [
+                e for e in full.get("edges", [])
+                if e["source"] in visible_ids and e["target"] in visible_ids
+            ]
+            return self._send({
+                "nodes": filtered_nodes,
+                "edges": filtered_edges,
+                "contradictions": full.get("contradictions", []),
+                "time": time,
+            })
         if path == "/contradictions":
             return self._send({"contradictions": load("graph.json").get("contradictions", [])})
         if path == "/timeline":

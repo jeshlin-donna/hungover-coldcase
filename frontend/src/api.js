@@ -21,6 +21,7 @@ async function post(path, body) {
 export const api = {
   health: () => get("/health"),
   graph: () => get("/graph"),
+  graphTemporal: (time) => get(`/graph/temporal${time ? `?time=${encodeURIComponent(time)}` : ""}`),
   timeline: () => get("/timeline"),
   contradictions: () => get("/contradictions"),
   benchmark: () => get("/benchmark"),

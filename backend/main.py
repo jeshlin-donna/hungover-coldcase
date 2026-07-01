@@ -264,6 +264,34 @@ def graph():
     return mock("graph.json")
 
 
+@app.get("/graph/temporal")
+def graph_temporal(time: str = None):
+    """Time-windowed graph view for the Evidence Board's temporal slider.
+
+    Returns only nodes dated at or before `time` (nodes without a `date`
+    field, e.g. jurisdictions, are treated as always-visible context anchors)
+    plus edges whose endpoints are both currently visible.
+    """
+    full = mock("graph.json")
+    if not time:
+        return full
+    nodes = full.get("nodes", [])
+    visible_ids = {
+        n["id"] for n in nodes if not n.get("date") or n["date"] <= time
+    }
+    filtered_nodes = [n for n in nodes if n["id"] in visible_ids]
+    filtered_edges = [
+        e for e in full.get("edges", [])
+        if e["source"] in visible_ids and e["target"] in visible_ids
+    ]
+    return {
+        "nodes": filtered_nodes,
+        "edges": filtered_edges,
+        "contradictions": full.get("contradictions", []),
+        "time": time,
+    }
+
+
 @app.get("/timeline")
 def timeline():
     return mock("timeline.json")
