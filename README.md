@@ -167,7 +167,7 @@ Run it yourself: `python benchmark/benchmark.py`
 
 | Retriever | Recall@3 | Recall@5 | MRR |
 |---|---|---|---|
-| naive_vector (sentence-transformers cosine) | **0.417** | **0.526** | **0.570** |
+| naive_vector (sentence-transformers cosine) | **0.401** | **0.417** | **0.485** |
 | cognee_vector (RAG_COMPLETION) | — | — | — |
 | **cognee_graph (GRAPH_COMPLETION)** | — | — | — |
 
@@ -175,14 +175,18 @@ Run it yourself: `python benchmark/benchmark.py`
 
 | Retriever | Recall@3 | Recall@5 | MRR |
 |---|---|---|---|
-| naive_vector | **0.742** | **0.900** | **0.687** |
+| naive_vector | **0.5** | **0.6** | **0.379** |
 | cognee_vector | — | — | — |
 | **cognee_graph** | — | — | — |
 
-Naive baseline live-measured: 261 docs · 26 queries (10 single-hop, 16 multi-hop).
-Single-hop R@5 = 0.90 (strong) vs multi-hop R@5 = 0.526 (drops sharply) — exactly the gap
-that Cognee graph traversal is designed to close. Cognee vector + graph runs pending;
-numbers land in `benchmark/results.json` when complete.
+Naive baseline live-measured on the full corpus: 261 docs (250 noise + 11 hero-case) · 26 queries
+(10 single-hop, 16 multi-hop). Raw numbers: `benchmark/results.json`.
+Cognee vector + graph legs are pipeline-verified (typed-schema extraction confirmed live against
+Ollama llama3.1:8b + Postgres/pgvector — see `PROGRESS.md`) but not yet run across the full
+261-doc corpus: on a CPU-only local model each structured extraction call takes 30-90s, so a
+full run is several hours — infeasible to finish in one sitting locally. Run
+`python benchmark/benchmark.py` yourself with a real API key (Claude/GPT-4o-mini) for a
+same-day full 3-way result, or let the local Ollama run go overnight.
 
 **The moat:** naive vector collapses on multi-hop because cosine similarity can't follow
 entity relationships across documents. Graph traversal can. That's the thesis.
@@ -362,7 +366,7 @@ phone_records.csv →  pandas         ─┘
                                │
               ┌────────────────▼──────────────────┐
               │   Cognee 1.2.2 (self-hosted OSS)    │
-              │   LanceDB 0.26.0  (vector store)    │
+              │   Postgres + pgvector (vec store)   │
               │   Kuzu / Ladybug  (graph store)     │
               │   fastembed       (local embeddings)│
               └────────────────┬──────────────────┘
@@ -387,8 +391,8 @@ phone_records.csv →  pandas         ─┘
               └───────────────────────────────────┘
 ```
 
-**Stack:** Python 3.11 · Cognee 1.2.2 (OSS, self-hosted) · LanceDB 0.26.0 · fastembed
-(local embeddings) · Kuzu (graph store) · FastAPI · React + Vite · react-force-graph-2d ·
+**Stack:** Python 3.11 · Cognee 1.2.2 (OSS, self-hosted) · Postgres + pgvector (vector store) · fastembed
+(local embeddings) · Kuzu/Ladybug (graph store) · FastAPI · React + Vite · react-force-graph-2d ·
 Claude Haiku (LLM + vision) · Whisper tiny (audio) · OpenCV (video) · PyMuPDF (PDF) · pandas (data)
 
 ---
@@ -396,8 +400,17 @@ Claude Haiku (LLM + vision) · Whisper tiny (audio) · OpenCV (video) · PyMuPDF
 ## Dependency Notes
 
 - **Cognee 1.2.2** — pinned; newer versions have breaking API changes not yet stable
-- **LanceDB 0.26.0** — pinned; 0.33.0 has a macOS ARM `LanceError(IO): Spill has sent an error`
-  bug in `merge_insert` that makes cognify() hang indefinitely
+- **Vector store: Postgres + pgvector** — the embedded LanceDB backend (both 0.26.0 and 0.33.0)
+  has a real, reproducible Rust-level concurrency bug in `merge_insert`
+  (`LanceError(IO): Spill has sent an error`) that crashes `cognify()` under concurrent writes —
+  it is **not** fixed by pinning to 0.26.0 (contrary to an earlier assumption in this repo).
+  Switching to `VECTOR_DB_PROVIDER=pgvector` against a local Postgres instance sidesteps it
+  entirely and also matches the original design blueprint's "backed by PostgreSQL" architecture.
+  Requires `asyncpg` + `pgvector` (in `requirements.txt`) and a local Postgres with the `vector`
+  extension enabled (`brew install postgresql@17 pgvector`).
+- **`ENABLE_BACKEND_ACCESS_CONTROL=false`** — Cognee's multi-tenant mode is on by default and
+  silently forces a per-tenant embedded LanceDB regardless of `VECTOR_DB_PROVIDER`; disable it
+  to make the pgvector config actually take effect.
 - **fastembed** — local BAAI/bge-small-en-v1.5 embeddings; no API key required for embedding;
   set `EMBEDDING_PROVIDER=fastembed` in `.env`
 - **COGNEE_SKIP_CONNECTION_TEST=true** — bypasses the 30-second LLM connectivity probe at startup
@@ -412,10 +425,19 @@ Claude Haiku (LLM + vision) · Whisper tiny (audio) · OpenCV (video) · PyMuPDF
 
 ```
 LLM_API_KEY=<your Anthropic or OpenAI key>
-LLM_PROVIDER=anthropic          # or openai
+LLM_PROVIDER=anthropic          # or openai / ollama for a fully local stack
 LLM_MODEL=claude-haiku-4-5-20251001
 EMBEDDING_PROVIDER=fastembed
 COGNEE_SKIP_CONNECTION_TEST=true
+
+# Vector store — local Postgres/pgvector (avoids an embedded-LanceDB concurrency bug)
+VECTOR_DB_PROVIDER=pgvector
+VECTOR_DB_HOST=localhost
+VECTOR_DB_PORT=5432
+VECTOR_DB_USERNAME=<your local postgres user>
+VECTOR_DB_PASSWORD=<your local postgres password>
+VECTOR_DB_NAME=coldcase
+ENABLE_BACKEND_ACCESS_CONTROL=false
 ```
 
 ---
@@ -452,8 +474,12 @@ COGNEE_SKIP_CONNECTION_TEST=true
 some ARM Macs. Fix: install `uv` (`brew install uv`) then `uv python install 3.11` and recreate
 the venv with `uv venv .venv --python 3.11`.
 
-**LanceDB spill error on macOS** — If cognify() hangs with `LanceError(IO): Spill has sent an error`,
-you have a newer LanceDB. Fix: `pip install lancedb==0.26.0`.
+**LanceDB spill error on macOS** — If cognify() hangs/crashes with `LanceError(IO): Spill has
+sent an error`, this is a real Rust-level concurrency bug in `merge_insert` that reproduces on
+both LanceDB 0.26.0 and 0.33.0 — pinning the version does **not** fix it. Fix: switch to a local
+Postgres/pgvector vector store (`VECTOR_DB_PROVIDER=pgvector` + `ENABLE_BACKEND_ACCESS_CONTROL=false`,
+see Environment Variables above); `brew install postgresql@17 pgvector` and enable the `vector`
+extension on your database.
 
 **SQLite schema mismatch** — After switching Cognee versions: `rm -rf .venv/lib/python3.11/site-packages/cognee/.cognee_system`
 
