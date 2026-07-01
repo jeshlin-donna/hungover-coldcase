@@ -1,7 +1,7 @@
 """
 Zero-dependency mock backend for the frontend. No pip needed — pure stdlib, runs anywhere.
 
-    python scripts/mock_server.py            # serves http://localhost:8000
+    python scripts/mock_server.py            # serves http://localhost:8010
 
 Implements the API_CONTRACT.md shapes from frontend/mock/*.json plus synthesized
 /recall, /hunch, /resolve, /expunge so Benjy can build the full UX before the real
@@ -85,6 +85,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print("mock backend → http://localhost:8000  (GET /graph /timeline /recall/compare "
+    print("mock backend → http://localhost:8010  (GET /graph /timeline /recall/compare "
           "/benchmark · POST /recall /hunch /resolve /expunge)")
-    ThreadingHTTPServer(("0.0.0.0", 8000), Handler).serve_forever()
+    ThreadingHTTPServer(("0.0.0.0", 8010), Handler).serve_forever()

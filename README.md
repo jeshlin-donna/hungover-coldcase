@@ -30,7 +30,9 @@ This creates a `.venv`, installs all Python packages, and scaffolds a `.env` fil
 
 **Step 2 — Add your API key**
 
-Open `.env` and set:
+Open `.env` and set one of the following.
+
+*Option A — hosted, paid (Anthropic/OpenAI):*
 ```
 LLM_API_KEY=your-anthropic-or-openai-key
 LLM_PROVIDER=anthropic          # or openai
@@ -38,6 +40,34 @@ LLM_MODEL=claude-haiku-4-5-20251001
 EMBEDDING_PROVIDER=fastembed
 COGNEE_SKIP_CONNECTION_TEST=true
 ```
+
+*Option B — Groq, free, open-source models (recommended for this track):*
+
+Groq hosts open-source Llama models on their own LPU hardware — free tier,
+no local CPU/RAM cost, and much faster than local Ollama.
+
+1. Go to [console.groq.com](https://console.groq.com), sign up (GitHub/Google login works).
+2. Open **API Keys** in the left sidebar → **Create API Key** → copy it.
+3. Set in `.env`:
+   ```
+   LLM_PROVIDER=custom
+   LLM_MODEL=groq/llama-3.3-70b-versatile
+   LLM_ENDPOINT=https://api.groq.com/openai/v1
+   LLM_API_KEY=gsk_your-groq-key-here
+   LLM_INSTRUCTOR_MODE=tool_call
+   EMBEDDING_PROVIDER=fastembed
+   COGNEE_SKIP_CONNECTION_TEST=true
+   ```
+   The `groq/` prefix on `LLM_MODEL` is required — Cognee routes LLM calls
+   through litellm, which needs that prefix to pick the right request format
+   for Groq's OpenAI-compatible endpoint. `COGNEE_SKIP_CONNECTION_TEST=true`
+   is needed because Cognee's own pre-flight connectivity check times out
+   against the generic/custom adapter even though the endpoint itself works
+   fine (verified directly with curl).
+
+Never commit your key — `.env` is gitignored. Share it with teammates
+directly (Slack/DM) or via a shared password manager, not in git, since
+this repo is intended to go public after the hackathon.
 
 **Step 3 — Verify Cognee works**
 ```bash
