@@ -3,18 +3,18 @@
     {"id": "jur:maple-heights", "label": "Maple Heights PD (Clearwater Co.)", "type": "jurisdiction"},
     {"id": "jur:riverside", "label": "Riverside PD (Hale Co.)", "type": "jurisdiction"},
 
-    {"id": "case:MH-0312", "label": "MH-2023-0312 · 2023-03-03", "type": "case"},
-    {"id": "case:RV-0788", "label": "RV-2023-0788 · 2023-11-19", "type": "case"},
-    {"id": "case:MH-0102", "label": "MH-2025-0102 · 2025-02-04", "type": "case"},
+    {"id": "case:MH-0312", "label": "MH-2023-0312 · 2023-03-03", "type": "case", "date": "2023-03-03"},
+    {"id": "case:RV-0788", "label": "RV-2023-0788 · 2023-11-19", "type": "case", "date": "2023-11-19"},
+    {"id": "case:MH-0102", "label": "MH-2025-0102 · 2025-02-04", "type": "case", "date": "2025-02-04"},
 
-    {"id": "tool:pry-8mm", "label": "Pry bar · 8mm · left-edge nick", "type": "tool"},
-    {"id": "veh:blue-sedan", "label": "Dark blue sedan · plate 8K·", "type": "vehicle"},
-    {"id": "mo:rear-slider", "label": "MO: rear slider, 02:00–04:00, cam obscured", "type": "mo"},
+    {"id": "tool:pry-8mm", "label": "Pry bar · 8mm · left-edge nick", "type": "tool", "date": "2023-03-03"},
+    {"id": "veh:blue-sedan", "label": "Dark blue sedan · plate 8K·", "type": "vehicle", "date": "2023-03-03"},
+    {"id": "mo:rear-slider", "label": "MO: rear slider, 02:00–04:00, cam obscured", "type": "mo", "date": "2023-03-03"},
 
-    {"id": "suspect:daniel-marsh", "label": "Daniel R. Marsh (arrested 2025)", "type": "suspect"},
+    {"id": "suspect:daniel-marsh", "label": "Daniel R. Marsh (arrested 2025)", "type": "suspect", "date": "2025-02-10"},
 
-    {"id": "alibi:marsh-nov19", "label": "Alibi: '300mi out of state' · 2023-11-19", "type": "alibi"},
-    {"id": "receipt:marsh-nov19", "label": "Card record: motel 4.2mi from Riverside · 2023-11-19 00:48", "type": "receipt"}
+    {"id": "alibi:marsh-nov19", "label": "Alibi: '300mi out of state' · 2023-11-19", "type": "alibi", "date": "2023-11-19"},
+    {"id": "receipt:marsh-nov19", "label": "Card record: motel 4.2mi from Riverside · 2023-11-19 00:48", "type": "receipt", "date": "2023-11-19"}
   ],
   "edges": [
     {"source": "case:MH-0312", "target": "jur:maple-heights", "relation": "filed_in"},

@@ -33,26 +33,92 @@ function withoutNode(graph, nodeId) {
   };
 }
 
+// Temporal slider range: Jan 2023 - Dec 2025, by month (mirrors TimelinePanel.jsx)
+const SLIDER_MIN_YEAR = 2023;
+const SLIDER_MAX_YEAR = 2025;
+const SLIDER_MAX_MONTH = 11; // December = 11
+
+function totalMonths() {
+  return (SLIDER_MAX_YEAR - SLIDER_MIN_YEAR) * 12 + SLIDER_MAX_MONTH;
+}
+
+function monthIndexToDate(idx) {
+  const year = SLIDER_MIN_YEAR + Math.floor(idx / 12);
+  const month = idx % 12;
+  return new Date(year, month, 1);
+}
+
+function toISODate(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function formatSliderDate(d) {
+  return d.toLocaleString("en-US", { month: "short", year: "numeric" });
+}
+
+// Client-side fallback filter (used offline / if the /graph/temporal endpoint is unreachable).
+function filterGraphByDate(fullGraph, cutoffISO) {
+  const nodes = fullGraph.nodes || [];
+  const visibleIds = new Set(
+    nodes.filter((n) => !n.date || n.date <= cutoffISO).map((n) => n.id)
+  );
+  return {
+    ...fullGraph,
+    nodes: nodes.filter((n) => visibleIds.has(n.id)),
+    edges: (fullGraph.edges || []).filter(
+      (e) => visibleIds.has(e.source) && visibleIds.has(e.target)
+    ),
+  };
+}
+
 export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
+  const [fullGraph, setFullGraph] = useState({ nodes: [], edges: [], contradictions: [] });
   const [graph, setGraph] = useState({ nodes: [], edges: [], contradictions: [] });
   const [reveal, setReveal] = useState(false);
   const [expunging, setExpunging] = useState(false);
   const [expungeNote, setExpungeNote] = useState("");
   const [selectedNode, setSelectedNode] = useState(null);
+  const maxIdx = totalMonths();
+  const [sliderIdx, setSliderIdx] = useState(maxIdx); // start showing everything
   const fgRef = useRef();
 
   useEffect(() => {
     if (graphData) {
+      setFullGraph(graphData);
       setGraph(graphData);
     } else {
       api.graph().then((g) => {
+        setFullGraph(g);
         setGraph(g);
         onGraphLoaded?.(g);
       }).catch(() => {
+        setFullGraph(MOCK_GRAPH);
         setGraph(MOCK_GRAPH);
       });
     }
   }, [graphData]);
+
+  const sliderDate = monthIndexToDate(sliderIdx);
+  const isFiltered = sliderIdx < maxIdx;
+
+  // Debounce so dragging doesn't hammer the endpoint on every tick, but this
+  // does genuinely call GET /api/v1/graph/temporal?time=X per the spec.
+  useEffect(() => {
+    if (!fullGraph.nodes?.length) return;
+    if (!isFiltered) {
+      setGraph(fullGraph);
+      return;
+    }
+    const cutoffISO = toISODate(sliderDate);
+    const id = setTimeout(() => {
+      api
+        .graphTemporal(cutoffISO)
+        .then((g) => setGraph(g))
+        .catch(() => setGraph(filterGraphByDate(fullGraph, cutoffISO)));
+    }, 150);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sliderIdx, fullGraph]);
 
   const data = useMemo(() => {
     const links = graph.edges.map((e) => ({
@@ -126,6 +192,36 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
           <button className="danger" onClick={handleExpunge} disabled={expunging}>
             {expunging ? "Expunging…" : "Expunge Riverside (forget())"}
           </button>
+        </div>
+      </div>
+
+      {/* Temporal slider — filters which graph nodes/edges are visible via GET /graph/temporal?time=X */}
+      <div className="temporal-slider-wrap">
+        <div className="temporal-slider-label-row">
+          <span className="temporal-slider-label">Temporal filter</span>
+          <span className="temporal-slider-date">
+            {isFiltered
+              ? `Showing graph as of ${formatSliderDate(sliderDate)}`
+              : "Full graph shown"}
+          </span>
+          {isFiltered && (
+            <button className="temporal-reset-btn" onClick={() => setSliderIdx(maxIdx)}>
+              Reset
+            </button>
+          )}
+        </div>
+        <input
+          type="range"
+          className="temporal-slider"
+          min={0}
+          max={maxIdx}
+          step={1}
+          value={sliderIdx}
+          onChange={(e) => { setSliderIdx(Number(e.target.value)); setSelectedNode(null); }}
+        />
+        <div className="temporal-slider-ends">
+          <span>Jan 2023</span>
+          <span>Dec 2025</span>
         </div>
       </div>
 

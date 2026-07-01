@@ -209,7 +209,13 @@ async def main(naive_only: bool) -> None:
         failed = []
         for i, (did, text) in enumerate(docs.items(), start=1):
             try:
-                await mem.remember(text, dataset=mem.DEFAULT_DATASET)
+                # Groq occasionally returns a malformed structured-output response
+                # deterministically for a given chunk, which makes Cognee's internal
+                # tenacity retry loop retry forever (same bad input -> same bad output).
+                # Bound each doc's ingestion so one stuck doc can't hang the whole run.
+                await asyncio.wait_for(
+                    mem.remember(text, dataset=mem.DEFAULT_DATASET), timeout=120
+                )
             except Exception as e:
                 failed.append(did)
                 print(f"[{i}/{len(docs)}] remember() FAILED for {did}: {type(e).__name__}: {str(e)[:200]}")
