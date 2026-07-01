@@ -40,7 +40,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 ## 🔄 In progress
 | Item | ETA | Notes |
 |---|---|---|
-| **Full 3-way benchmark** (naive + cognee_vector + cognee_graph) | needs a faster LLM | Naive leg is done (see above). The Cognee legs need to `cognify()` all 261 docs; on this machine's CPU-only local model that's multiple 30-90s structured-extraction calls per doc — many hours, not feasible to finish in one sitting. Pipeline itself is verified working end-to-end (see above), so running the Cognee legs is now just a matter of LLM throughput — recommend running with a real API key (Claude/GPT-4o-mini) for a same-day full run, or leaving the local Ollama run going overnight. |
+| **Full 3-way benchmark** (naive + cognee_vector + cognee_graph) | needs a faster LLM or more headroom | Naive leg is done (see above). Attempted the Cognee legs twice against local Ollama (llama3.1:8b): pipeline itself works end-to-end (verified in smoke test), but on this machine the run died partway through 261-doc ingestion both times — first from an uncaught exception on a single flaky structured-output response (fixed: `benchmark.py` now catches/logs/skips per-doc failures instead of crashing the whole run), then from **system memory pressure** (swap was at ~13.3/14.3GB used with Chrome/Teams/Slack/Outlook/Defender competing with Ollama for RAM — not a code bug). Recommend either running with a real API key (Claude/GPT-4o-mini) for a same-day full run, or re-running the local Ollama pipeline on a quieter machine / with other apps closed. |
 
 ---
 
