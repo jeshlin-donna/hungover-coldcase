@@ -206,8 +206,17 @@ async def main(naive_only: bool) -> None:
         # Ingest corpus into Cognee first (idempotent-ish; prune for a clean run).
         import memory_service as mem
         from memory_service import RecallMode
-        for did, text in docs.items():
-            await mem.remember(text, dataset=mem.DEFAULT_DATASET)
+        failed = []
+        for i, (did, text) in enumerate(docs.items(), start=1):
+            try:
+                await mem.remember(text, dataset=mem.DEFAULT_DATASET)
+            except Exception as e:
+                failed.append(did)
+                print(f"[{i}/{len(docs)}] remember() FAILED for {did}: {type(e).__name__}: {str(e)[:200]}")
+            else:
+                print(f"[{i}/{len(docs)}] remember() ok for {did}")
+        if failed:
+            print(f"WARNING: {len(failed)}/{len(docs)} docs failed to ingest and were skipped: {failed}")
         results.append(await evaluate(
             CogneeRetriever(RecallMode.VECTOR, ids, "cognee_vector"), queries))
         results.append(await evaluate(

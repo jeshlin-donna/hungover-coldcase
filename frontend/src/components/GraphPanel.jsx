@@ -96,6 +96,19 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
 
   const contradictions = graph.contradictions || [];
 
+  // Fit the whole graph into view whenever the node/link set changes —
+  // otherwise react-force-graph-2d keeps its default zoom level and only
+  // the tight center cluster is visible in a mostly-empty canvas.
+  useEffect(() => {
+    if (!data.nodes.length) return;
+    fgRef.current?.d3Force("charge")?.strength(-220);
+    fgRef.current?.d3Force("link")?.distance(70);
+    const id = setTimeout(() => {
+      fgRef.current?.zoomToFit(400, 60);
+    }, 300);
+    return () => clearTimeout(id);
+  }, [data]);
+
   return (
     <div className="panel">
       <div className="row" style={{ marginBottom: 10 }}>
@@ -136,6 +149,10 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
           nodeLabel={(n) => `${n.label} (${n.type})`}
           nodeColor={(n) => NODE_COLORS[n.type] || "#aaa"}
           nodeRelSize={7}
+          d3VelocityDecay={0.35}
+          warmupTicks={60}
+          cooldownTicks={100}
+          onEngineStop={() => fgRef.current?.zoomToFit(400, 60)}
           linkLabel={(l) => l.relation}
           linkColor={(l) => (l._c ? "#f85149" : "rgba(255,255,255,0.18)")}
           linkWidth={(l) => (l._c ? 3 : 1)}
