@@ -1,6 +1,6 @@
 # ColdCache — Progress Tracker
 
-> **Last updated:** 2026-06-30 (Day 2, evening) — all 8 modules built, full benchmark running
+> **Last updated:** 2026-07-01 — all 8 modules built, corpus complete, typed schema added, live pipeline verified
 > Detailed plan: `EXECUTION_PLAN.md`
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo
@@ -30,23 +30,24 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 | `docs/social_posts.md` — Twitter, LinkedIn, Instagram | Jesh | |
 | `README.md` — story-first, quick start, 4-API usage, AI disclosure | Jesh | |
 | `scripts/ingest.py` + `scripts/generate_corpus.py` | Jesh | |
-| `data/raw/` — 102/250 synthetic noise incident reports | Agent | Still generating |
-| **Naive benchmark baseline** | Jesh | single_hop R@3=0.683 · multi_hop R@3=0.505 |
+| `data/raw/` — 250/250 synthetic noise incident reports | Agent | Complete |
+| **Naive benchmark baseline** (full 261-doc corpus) | Agent | R@3: single_hop=0.5, multi_hop=0.401, all=0.439 · R@5: 0.6/0.417/0.487 · MRR: 0.379/0.485/0.444 (see `benchmark/results.json`) |
+| **Typed Cognee schema** (`backend/schema.py`) | Agent | Person/Location/TimePoint/Evidence/Object nodes; WAS_AT/AT_TIME/DEPICTS/REPORTED_BY/CONTRADICTS edges, wired into `cognify()`. Matches design-doc Version 2 blueprint. |
+| **Live local-LLM pipeline verified** | Agent | Full `remember→cognify→recall` cycle passes against Ollama (llama3.1:8b) + local Postgres/pgvector — real graph extraction with correct node/edge counts, no mocking. |
 
 ---
 
 ## 🔄 In progress
 | Item | ETA | Notes |
 |---|---|---|
-| data/raw/ corpus — 250 files | ~10 min | 102 done |
-| **Full 3-way benchmark** (naive + cognee_vector + cognee_graph) | ~20-30 min | Running now — will produce results.json + chart.png |
+| **Full 3-way benchmark** (naive + cognee_vector + cognee_graph) | needs a faster LLM | Naive leg is done (see above). The Cognee legs need to `cognify()` all 261 docs; on this machine's CPU-only local model that's multiple 30-90s structured-extraction calls per doc — many hours, not feasible to finish in one sitting. Pipeline itself is verified working end-to-end (see above), so running the Cognee legs is now just a matter of LLM throughput — recommend running with a real API key (Claude/GPT-4o-mini) for a same-day full run, or leaving the local Ollama run going overnight. |
 
 ---
 
 ## ⬜ To do (Day 3 → Day 7)
 | # | Item | Owner |
 |---|---|---|
-| 1 | Drop real benchmark numbers into README + blog post | Jesh |
+| 1 | Drop real benchmark numbers into README + blog post | Jesh | Naive baseline numbers in; Cognee legs pending a faster LLM run |
 | 2 | Capture real improve() before/after delta | Jesh |
 | 3 | Push to GitHub (needs your terminal: `git push origin main`) | Jesh |
 | 4 | Test all 8 panels against live backend (uvicorn + real Cognee) | Sam/Jesh |
