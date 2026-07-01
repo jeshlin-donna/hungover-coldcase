@@ -14,3 +14,7 @@ opencv-python-headless     # video frame extraction
 pymupdf                    # PDF text extraction + scanned page rendering
 pandas                     # spreadsheet parsing
 openpyxl                   # Excel support for pandas
+
+# Optional: pgvector-based vector store (avoids embedded-LanceDB concurrency bug)
+asyncpg
+pgvector
