@@ -24,6 +24,8 @@ from typing import Any
 
 import cognee
 
+from backend.schema import ColdCaseGraph, COLD_CASE_EXTRACTION_PROMPT
+
 # --- SearchType: verified export is `from cognee import SearchType` (re-exported from
 # cognee.api.v1.search). Keep the defensive loop for older/newer layouts. ---
 SearchType = None
@@ -84,10 +86,23 @@ async def remember(text: str, dataset: str = DEFAULT_DATASET) -> None:
     await cognify(dataset)
 
 
-async def cognify(dataset: str = DEFAULT_DATASET) -> None:
+async def cognify(dataset: str = DEFAULT_DATASET, typed_schema: bool = True) -> None:
     """Build/refresh the graph. cognify() is synchronous by default (run_in_background=False)
-    — it blocks until the graph is built, so no status polling is needed at our scale."""
-    await cognee.cognify(datasets=[dataset])              # verified: cognify(datasets=[...])
+    — it blocks until the graph is built, so no status polling is needed at our scale.
+
+    typed_schema=True (default) passes our Cold Case Connector ontology (backend/schema.py)
+    as cognify()'s `graph_model`, constraining extraction to explicit Person/Location/
+    TimePoint/Evidence/Object nodes and WAS_AT/AT_TIME/DEPICTS/REPORTED_BY/CONTRADICTS edges
+    instead of Cognee's free-form default KnowledgeGraph. Set False to fall back to default
+    extraction (e.g. for A/B comparison or if the constrained schema needs loosening)."""
+    if typed_schema:
+        await cognee.cognify(
+            datasets=[dataset],
+            graph_model=ColdCaseGraph,
+            custom_prompt=COLD_CASE_EXTRACTION_PROMPT,
+        )
+    else:
+        await cognee.cognify(datasets=[dataset])          # verified: cognify(datasets=[...])
 
 
 async def wait_for_indexing(dataset_ids: list, timeout_s: int = 300) -> None:
