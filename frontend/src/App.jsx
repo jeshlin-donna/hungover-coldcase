@@ -13,18 +13,42 @@ import SuspectTimelinePanel from "./components/SuspectTimelinePanel.jsx";
 import CogneePanel from "./components/CogneePanel.jsx";
 
 const TABS = [
-  { id: "chat",             label: "Case Chat",        icon: "💬" },
-  { id: "graph",            label: "Evidence Board",   icon: "🕸️" },
-  { id: "compare",          label: "Graph vs Vector",  icon: "⚖️" },
-  { id: "cognee",           label: "Cognee APIs",      icon: "🧠" },
-  { id: "timeline",         label: "Timeline",         icon: "📅" },
-  { id: "missing-hours",    label: "Missing Hours",    icon: "🕳️" },
-  { id: "nexus",            label: "Nexus Point",      icon: "🔗" },
-  { id: "interrogation",    label: "Interrogation",    icon: "🎯" },
-  { id: "whatif",           label: "What-If",          icon: "🧪" },
-  { id: "upload",           label: "Messy Desk",       icon: "📁" },
-  { id: "suspect-timeline", label: "Suspect Timeline", icon: "🕵️" },
+  { id: "chat",             label: "Case Chat",        icon: "💬",
+    blurb: "Ask plain-English questions about the case; answers are sourced live from the knowledge graph.",
+    tryText: "Try: \"Who appears across both Millbrook and Riverside cases?\"" },
+  { id: "graph",            label: "Evidence Board",   icon: "🕸️",
+    blurb: "The interactive case graph — people, places, tools, and evidence as connected nodes.",
+    tryText: "Try: drag the temporal slider, then click \"Run alibi check\" to see the contradiction light up." },
+  { id: "compare",          label: "Graph vs Vector",  icon: "⚖️",
+    blurb: "Side-by-side proof that graph search finds cross-jurisdiction links plain vector search misses.",
+    tryText: "Try: run the same query in both modes and compare the answers." },
+  { id: "cognee",           label: "Cognee APIs",      icon: "🧠",
+    blurb: "Live playground for the 4 core Cognee calls (remember / recall / improve / forget) with real code shown.",
+    tryText: "Try: click \"Run\" on any card to execute that API against this case live." },
+  { id: "timeline",         label: "Timeline",         icon: "📅",
+    blurb: "Chronological list of every incident in the case, filterable by date.",
+    tryText: "Try: drag the slider to replay the case as it would've looked mid-investigation." },
+  { id: "missing-hours",    label: "Missing Hours",    icon: "🕳️",
+    blurb: "Flags gaps in a suspect's timeline where there's no evidence of their location — investigative leads.",
+    tryText: "Try: see which time windows need more evidence pulled (e.g. CCTV, cell records)." },
+  { id: "nexus",            label: "Nexus Point",      icon: "🔗",
+    blurb: "Finds the shortest hidden path connecting two seemingly unrelated people or pieces of evidence.",
+    tryText: "Try: pick two nodes and see how many hops separate them." },
+  { id: "interrogation",    label: "Interrogation",    icon: "🎯",
+    blurb: "Generates tactical questions for a suspect, built from contradictions between their statements and hard evidence.",
+    tryText: "Try: generate a question that traps the suspect's alibi claim." },
+  { id: "whatif",           label: "What-If",          icon: "🧪",
+    blurb: "A safe sandbox to test hypotheses (e.g. \"what if this witness is unreliable?\") without touching real data.",
+    tryText: "Try: zero out a witness's reliability score and see how the case's alibi integrity changes." },
+  { id: "upload",           label: "Messy Desk",       icon: "📁",
+    blurb: "Drag-and-drop ingestion for new case files (audio, photos, text) straight into the knowledge graph.",
+    tryText: "Try: drop a file and watch it get parsed into graph nodes in real time." },
+  { id: "suspect-timeline", label: "Suspect Timeline", icon: "🕵️",
+    blurb: "Reconstructs a single suspect's movements minute-by-minute from all ingested evidence.",
+    tryText: "Try: see Daniel Marsh's full reconstructed timeline on the night of the burglary." },
 ];
+
+const GUIDE_SEEN_KEY = "coldcache_guide_seen";
 
 export default function App() {
   const [tab, setTab] = useState("chat");
@@ -38,6 +62,22 @@ export default function App() {
   const [showReport, setShowReport] = useState(false);
   const [report, setReport] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [showGuide, setShowGuide] = useState(() => {
+    try {
+      return !localStorage.getItem(GUIDE_SEEN_KEY);
+    } catch {
+      return true;
+    }
+  });
+
+  function closeGuide() {
+    setShowGuide(false);
+    try {
+      localStorage.setItem(GUIDE_SEEN_KEY, "1");
+    } catch {
+      // ignore (private browsing etc.)
+    }
+  }
 
   useEffect(() => {
     api.health().then((h) => setMode(h.mode)).catch(() => setMode("offline"));
@@ -162,6 +202,14 @@ export default function App() {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <button
               className="btn-improve"
+              onClick={() => setShowGuide(true)}
+              style={{ background: "linear-gradient(135deg,#1a1f2a 0%,#0d1220 100%)", borderColor: "var(--accent)", color: "var(--accent)" }}
+              title="What does each tab do?"
+            >
+              ❓ How this works
+            </button>
+            <button
+              className="btn-improve"
               onClick={handleImprove}
               disabled={improving}
             >
@@ -214,14 +262,17 @@ export default function App() {
             key={t.id}
             className={tab === t.id ? "active" : ""}
             onClick={() => setTab(t.id)}
-            title={t.label}
+            title={t.blurb}
           >
             <span className="tab-icon">{t.icon}</span>
             <span className="tab-label">{t.label}</span>
           </button>
         ))}
       </nav>
-      <p className="kbd-hint">Press <kbd>1</kbd>–<kbd>0</kbd> to switch panels</p>
+      <p className="kbd-hint">
+        Press <kbd>1</kbd>–<kbd>0</kbd> to switch panels · hover a tab for what it does ·{" "}
+        <button className="guide-link" onClick={() => setShowGuide(true)}>full guide</button>
+      </p>
 
       <main>
         <div key={tab} className="tab-panel-fade">
@@ -248,6 +299,38 @@ export default function App() {
       <footer>
         Synthetic data only · illustrative demo, not an operational tool.
       </footer>
+
+      {showGuide && (
+        <div className="report-modal-overlay" onClick={closeGuide}>
+          <div className="report-modal guide-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="report-close" onClick={closeGuide}>×</button>
+            <h2 className="report-title">🔍 How ColdCache works</h2>
+            <p style={{ color: "var(--muted)", fontSize: 14, marginTop: -8, marginBottom: 20 }}>
+              This is a graph-vector investigative co-pilot for cold cases. Every tab below is a
+              different lens on the same underlying case graph. Click any row to jump straight there.
+            </p>
+            <div className="guide-list">
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  className="guide-row"
+                  onClick={() => { setTab(t.id); closeGuide(); }}
+                >
+                  <span className="guide-row-icon">{t.icon}</span>
+                  <span className="guide-row-body">
+                    <span className="guide-row-title">{t.label}</span>
+                    <span className="guide-row-blurb">{t.blurb}</span>
+                    <span className="guide-row-try">{t.tryText}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+            <button className="report-copy-btn" onClick={closeGuide} style={{ marginTop: 16 }}>
+              Got it, let's go
+            </button>
+          </div>
+        </div>
+      )}
 
       {showReport && (
         <div className="report-modal-overlay" onClick={() => setShowReport(false)}>
