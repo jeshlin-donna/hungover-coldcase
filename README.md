@@ -211,12 +211,22 @@ Run it yourself: `python benchmark/benchmark.py`
 
 Naive baseline live-measured on the full corpus: 261 docs (250 noise + 11 hero-case) · 26 queries
 (10 single-hop, 16 multi-hop). Raw numbers: `benchmark/results.json`.
-Cognee vector + graph legs are pipeline-verified (typed-schema extraction confirmed live against
-Ollama llama3.1:8b + Postgres/pgvector — see `PROGRESS.md`) but not yet run across the full
-261-doc corpus: on a CPU-only local model each structured extraction call takes 30-90s, so a
-full run is several hours — infeasible to finish in one sitting locally. Run
-`python benchmark/benchmark.py` yourself with a real API key (Claude/GPT-4o-mini) for a
-same-day full 3-way result, or let the local Ollama run go overnight.
+
+Cognee vector + graph legs are **pipeline-verified but not run to completion on the full
+261-doc corpus** — the `remember→cognify→recall` cycle is confirmed working end-to-end (typed-schema
+extraction, correct node/edge counts) via `backend/smoke_test.py` and partial ingestion runs
+(23/261 docs) against two different LLM backends:
+- **Local Ollama (llama3.1:8b):** works, but each structured-extraction call takes 30-90s on a
+  CPU-only machine, so a full run is several hours; the run also died twice from unrelated local
+  resource pressure (system swap/memory, not a Cognee bug — see `PROGRESS.md`).
+- **Groq (`llama-3.3-70b-versatile`, free tier):** ~6.5 docs/min, dramatically faster, and the
+  intended fix for the above — but **Groq's free tier caps at 100k tokens/24h** (a rolling window,
+  not a fixed daily reset), and repeated same-day run attempts exhausted the whole allowance before
+  a full 261-doc ingest could finish (`RateLimitError: Used 99972/100000 tokens`).
+
+To get real `cognee_vector`/`cognee_graph` numbers: run `python benchmark/benchmark.py` with either
+(a) a paid/higher-quota LLM key, (b) the free Groq tier spread across multiple days, or (c) local
+Ollama overnight on a quiet machine with no competing memory pressure.
 
 **The moat:** naive vector collapses on multi-hop because cosine similarity can't follow
 entity relationships across documents. Graph traversal can. That's the thesis.
