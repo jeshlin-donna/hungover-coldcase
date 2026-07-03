@@ -44,7 +44,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 ## 🔄 In progress
 | Item | ETA | Notes |
 |---|---|---|
-| **Full 3-way benchmark** (naive + cognee_vector + cognee_graph) | in progress | Naive leg done. `benchmark_improve.py` complete — BEFORE cognee_graph R@3=0.75 confirmed live. Full 261-doc benchmark (`benchmark.py`) now running against Ollama `gemma4:e4b`. |
+| Dry-run demo.py twice on clean state | in progress | Clean reset fixed; local `gemma4:e4b` run still pending. |
 
 ---
 

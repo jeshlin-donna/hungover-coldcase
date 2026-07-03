@@ -170,7 +170,9 @@ async def reset_all() -> None:
     prune = getattr(cognee, "prune", None)
     if prune is not None:
         # verified: cognee.prune.prune_data() and cognee.prune.prune_system(...)
-        for fn in ("prune_data", "prune_system"):
-            f = getattr(prune, fn, None)
-            if f:
-                await f()
+        prune_data = getattr(prune, "prune_data", None)
+        prune_system = getattr(prune, "prune_system", None)
+        if prune_data:
+            await prune_data()
+        if prune_system:
+            await prune_system(metadata=True)
