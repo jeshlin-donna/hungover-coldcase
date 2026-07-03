@@ -36,6 +36,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 | **Live local-LLM pipeline verified (Ollama gemma4:e4b)** | Sam | Full `remember→cognify→recall→improve→forget` smoke test passes against local Ollama (`gemma4:e4b` LLM + `nomic-embed-text:latest` embeddings). All 5 API phases confirmed. `COGNEE_SKIP_CONNECTION_TEST=true` added to avoid 30s probe per doc. |
 | **`benchmark/benchmark_improve.py`** | Sam | Script to measure real `improve()` before/after metric delta using hero-case docs. Running now against Ollama. |
 | **Real Cognee graph recall numbers (BEFORE improve())** | Sam | Live `cognee_graph` recall on 3 multi-hop queries: avg R@3=0.75, avg MRR=0.611. q07 (cross-jurisdiction forensic link): R@3=1.0, MRR=1.0. q17 (alibi contradiction): R@3=1.0, MRR=0.5. `improve()` itself confirmed working — AFTER recall timed out due to `gemma4:e4b` 4096-token context limit on session agent structured output (model constraint, not Cognee bug). Results in `benchmark/improve_results.json`. |
+| Test all 8 panels against live backend (uvicorn + real Cognee) | Sam/Jesh | ✅ |
 
 ---
 
@@ -52,7 +53,6 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 | 1 | Drop real benchmark numbers into README + blog post | Jesh | Naive baseline numbers in; Cognee legs pending a faster LLM run |
 | 2 | Capture real improve() before/after delta | Jesh |
 | 3 | Push to GitHub (needs your terminal: `git push origin main`) | Jesh |
-| 4 | Test all 8 panels against live backend (uvicorn + real Cognee) | Sam/Jesh |
 | 5 | **2-min demo video** (screen + voiceover) | Benjy |
 | 6 | Publish blog post (Medium/Dev.to) | Sam |
 | 7 | Social posts live on submission day | Benjy |
