@@ -83,14 +83,14 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
 ## 3. Steps to completion
 
 ### Phase 1 — Foundation (DONE)
-- [x] Priority 0 + smoke test passes (cognee 1.2.2 + lancedb 0.26.0 + fastembed + Claude key)
+- [x] Priority 0 + smoke test passes (cognee 1.2.2 + Ollama gemma4:e4b + nomic-embed-text — all 5 API phases verified)
 - [x] Demo.py live end-to-end passes (all 5 phases)
 - [x] Backend: 15 endpoints implemented (FastAPI, live/degraded mode)
 - [x] Frontend: 8 panels implemented (dark theme, animations)
 - [x] Blog post + social posts + README written
 
 ### Phase 2 — Corpus & Benchmark (IN PROGRESS)
-- [ ] Complete 250-doc noise corpus (102/250 done, agent running)
+- [x] Complete 250-doc noise corpus (250/250 done)
 - [ ] Full 3-way benchmark run produces results.json + chart.png
 - [ ] Update README + blog with real benchmark numbers
 - [ ] Capture real improve() before/after metric delta

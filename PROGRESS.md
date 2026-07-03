@@ -1,6 +1,6 @@
 # ColdCache — Progress Tracker
 
-> **Last updated:** 2026-07-01 — all 8 modules built, corpus complete, typed schema added, live pipeline verified
+> **Last updated:** 2026-07-03 — Ollama pipeline re-verified with gemma4:e4b; benchmark_improve.py running
 > Detailed plan: `EXECUTION_PLAN.md`
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo
@@ -33,14 +33,15 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 | `data/raw/` — 250/250 synthetic noise incident reports | Agent | Complete |
 | **Naive benchmark baseline** (full 261-doc corpus) | Agent | R@3: single_hop=0.5, multi_hop=0.401, all=0.439 · R@5: 0.6/0.417/0.487 · MRR: 0.379/0.485/0.444 (see `benchmark/results.json`) |
 | **Typed Cognee schema** (`backend/schema.py`) | Agent | Person/Location/TimePoint/Evidence/Object nodes; WAS_AT/AT_TIME/DEPICTS/REPORTED_BY/CONTRADICTS edges, wired into `cognify()`. Matches design-doc Version 2 blueprint. |
-| **Live local-LLM pipeline verified** | Agent | Full `remember→cognify→recall` cycle passes against Ollama (llama3.1:8b) + local Postgres/pgvector — real graph extraction with correct node/edge counts, no mocking. |
+| **Live local-LLM pipeline verified (Ollama gemma4:e4b)** | Sam | Full `remember→cognify→recall→improve→forget` smoke test passes against local Ollama (`gemma4:e4b` LLM + `nomic-embed-text:latest` embeddings). All 5 API phases confirmed. `COGNEE_SKIP_CONNECTION_TEST=true` added to avoid 30s probe per doc. |
+| **`benchmark/benchmark_improve.py`** | Sam | Script to measure real `improve()` before/after metric delta using hero-case docs. Running now against Ollama. |
 
 ---
 
 ## 🔄 In progress
 | Item | ETA | Notes |
 |---|---|---|
-| **Full 3-way benchmark** (naive + cognee_vector + cognee_graph) | blocked on LLM quota/resources | Naive leg is done (see above). Attempted the Cognee legs three times total: (1)+(2) against local Ollama (llama3.1:8b) — pipeline verified end-to-end in smoke test, but the 261-doc run died partway both times, first from an uncaught per-doc exception (fixed: `benchmark.py` now catches/logs/skips per-doc failures) then from **system memory pressure** (swap ~13.3/14.3GB used, competing with other apps — not a code bug). (3) Migrated to **Groq** (free-hosted `llama-3.3-70b-versatile`, OpenAI-compatible) to fix both the memory and speed problems — this worked, ~6.5 docs/min vs local Ollama's ~1/min, and got up to 23/261 docs in before hitting a doc where Groq deterministically mangles structured output, causing Cognee's internal retry loop to hang forever (fixed: added `asyncio.wait_for(timeout=120)` per doc in `benchmark.py`). On the relaunch, hit a **hard wall**: Groq's free tier caps at 100k tokens/24h (rolling window), and our several run attempts that same day burned through the entire daily allowance before a full 261-doc run could complete — confirmed via the API's own `RateLimitError` (`Used 99972/100000... try again in 10m` — recovers too slowly to finish a full run same-day). Decision: reporting naive-baseline numbers only; the Cognee legs remain unrun end-to-end at full scale, though the pipeline itself is proven correct (smoke test + partial 23-doc runs against both Ollama and Groq). To finish this: either use a paid/higher-quota LLM key, spread the run across multiple days under Groq's free tier, or run on a quieter machine with a local model and no other memory pressure. |
+| **Full 3-way benchmark** (naive + cognee_vector + cognee_graph) | in progress | Naive leg done. `benchmark_improve.py` running now to capture real `improve()` delta against Ollama (`gemma4:e4b`). Full 261-doc benchmark run queued next. |
 
 ---
 
