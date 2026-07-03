@@ -96,8 +96,8 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
 - [x] Capture real improve() before/after metric delta (BEFORE: avg R@3=0.75, MRR=0.611 live from cognee_graph; improve() confirmed working; AFTER timed out — gemma4:e4b 4096-token context limit during session agent structured output)
 
 ### Phase 3 — Integration & QA
-- [ ] All agents merged + committed
-- [ ] Wire frontend to live backend (uvicorn + verify all 15 endpoints respond correctly)
+- [x] All agents merged + committed
+- [x] Wire frontend to live backend (uvicorn + verify all 15 endpoints respond correctly)
 - [ ] Test all 8 panels against live Cognee (not just mock)
 - [ ] Test drag-drop ingestion end-to-end (upload new doc → appears in graph)
 - [ ] Dry-run demo.py twice on clean state
