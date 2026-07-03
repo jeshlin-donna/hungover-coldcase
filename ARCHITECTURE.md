@@ -256,6 +256,10 @@ the same typed `cognify()` path with `data_per_batch=1` and `chunk_size=1200`. T
 structured extraction within the local Ollama model's context window without rebuilding
 the whole growing graph once per document.
 
+The full benchmark uses the same staged-build helper for all 261 documents. This changes
+only pipeline scheduling: every document still enters the `coldcases` dataset, while the
+typed graph is built once after staging instead of being rebuilt 261 times.
+
 ---
 
 ## 8. Backend API surface (`backend/main.py`)
