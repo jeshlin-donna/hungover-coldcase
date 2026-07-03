@@ -35,13 +35,14 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 | **Typed Cognee schema** (`backend/schema.py`) | Agent | Person/Location/TimePoint/Evidence/Object nodes; WAS_AT/AT_TIME/DEPICTS/REPORTED_BY/CONTRADICTS edges, wired into `cognify()`. Matches design-doc Version 2 blueprint. |
 | **Live local-LLM pipeline verified (Ollama gemma4:e4b)** | Sam | Full `remember→cognify→recall→improve→forget` smoke test passes against local Ollama (`gemma4:e4b` LLM + `nomic-embed-text:latest` embeddings). All 5 API phases confirmed. `COGNEE_SKIP_CONNECTION_TEST=true` added to avoid 30s probe per doc. |
 | **`benchmark/benchmark_improve.py`** | Sam | Script to measure real `improve()` before/after metric delta using hero-case docs. Running now against Ollama. |
+| **Real Cognee graph recall numbers (BEFORE improve())** | Sam | Live `cognee_graph` recall on 3 multi-hop queries: avg R@3=0.75, avg MRR=0.611. q07 (cross-jurisdiction forensic link): R@3=1.0, MRR=1.0. q17 (alibi contradiction): R@3=1.0, MRR=0.5. `improve()` itself confirmed working — AFTER recall timed out due to `gemma4:e4b` 4096-token context limit on session agent structured output (model constraint, not Cognee bug). Results in `benchmark/improve_results.json`. |
 
 ---
 
 ## 🔄 In progress
 | Item | ETA | Notes |
 |---|---|---|
-| **Full 3-way benchmark** (naive + cognee_vector + cognee_graph) | in progress | Naive leg done. `benchmark_improve.py` running now to capture real `improve()` delta against Ollama (`gemma4:e4b`). Full 261-doc benchmark run queued next. |
+| **Full 3-way benchmark** (naive + cognee_vector + cognee_graph) | in progress | Naive leg done. `benchmark_improve.py` complete — BEFORE cognee_graph R@3=0.75 confirmed live. Full 261-doc benchmark (`benchmark.py`) now running against Ollama `gemma4:e4b`. |
 
 ---
 

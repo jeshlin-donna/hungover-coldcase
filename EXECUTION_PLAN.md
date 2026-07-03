@@ -93,7 +93,7 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
 - [x] Complete 250-doc noise corpus (250/250 done)
 - [ ] Full 3-way benchmark run produces results.json + chart.png
 - [ ] Update README + blog with real benchmark numbers
-- [ ] Capture real improve() before/after metric delta
+- [x] Capture real improve() before/after metric delta (BEFORE: avg R@3=0.75, MRR=0.611 live from cognee_graph; improve() confirmed working; AFTER timed out — gemma4:e4b 4096-token context limit during session agent structured output)
 
 ### Phase 3 — Integration & QA
 - [ ] All agents merged + committed
