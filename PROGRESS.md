@@ -37,6 +37,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 | **`benchmark/benchmark_improve.py`** | Sam | Script to measure real `improve()` before/after metric delta using hero-case docs. Running now against Ollama. |
 | **Real Cognee graph recall numbers (BEFORE improve())** | Sam | Live `cognee_graph` recall on 3 multi-hop queries: avg R@3=0.75, avg MRR=0.611. q07 (cross-jurisdiction forensic link): R@3=1.0, MRR=1.0. q17 (alibi contradiction): R@3=1.0, MRR=0.5. `improve()` itself confirmed working — AFTER recall timed out due to `gemma4:e4b` 4096-token context limit on session agent structured output (model constraint, not Cognee bug). Results in `benchmark/improve_results.json`. |
 | Test all 8 panels against live backend (uvicorn + real Cognee) | Sam/Jesh | ✅ |
+| Test drag-drop ingestion end-to-end (upload new doc → appears in graph) | Sam/Jesh | ✅ |
 
 ---
 

@@ -11,6 +11,7 @@ const NODE_COLORS = {
   jurisdiction: "#8b949e",
   alibi: "#ff9f1c",
   receipt: "#2ec4b6",
+  evidence: "#d2a8ff",
 };
 
 const TYPE_LABELS = {
@@ -22,6 +23,7 @@ const TYPE_LABELS = {
   jurisdiction: "Jurisdiction",
   alibi: "Alibi claim",
   receipt: "Card record",
+  evidence: "Uploaded evidence",
 };
 
 // Animate node removal by filtering them out over a brief transition.
