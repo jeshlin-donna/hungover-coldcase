@@ -17,7 +17,12 @@
 | `improve` | `await cognee.improve(dataset="main_dataset", run_in_background=False, session_ids=Optional[List[str]])`. Real session→permanent bridging only when `session_ids` given. |
 | `forget` | `await cognee.forget(data_id=None, dataset=None, dataset_id=None, everything=False, memory_only=False)`. `forget(dataset="x")` deletes the whole dataset; `memory_only=True` keeps raw files. |
 | `datasets.get_status` | `await cognee.datasets.get_status([dataset_ids])` — takes **dataset UUIDs**, not names; returns `{id: {pipeline: status}}`. Not needed in the synchronous flow. |
-| `prune` | `await cognee.prune.prune_data()` and `await cognee.prune.prune_system(graph=True, vector=True, metadata=False, cache=True)` |
+| `prune` | `await cognee.prune.prune_data()` and `await cognee.prune.prune_system(graph=True, vector=True, metadata=False, cache=True)`. ColdCache's clean reset passes `metadata=True`; otherwise stale document metadata can deduplicate re-added files after the graph/vector stores have been deleted. |
+
+## Backend startup behavior
+`backend/main.py` loads the repository `.env` before deciding LIVE vs DEGRADED mode. The
+documented `uvicorn backend.main:app --port 8000` command therefore uses the configured
+`LLM_API_KEY` without requiring the user to export every variable into the shell first.
 
 ## Still to confirm on a live keyed run (one thing)
 `recall()` / `search()` return `list[RecallResponse]`. Confirm what a `RecallResponse`

@@ -16,7 +16,9 @@ The case web for the force-graph view.
   "edges": [{"source": "case:MH-0312", "target": "tool:pry-8mm", "relation": "tool_used"}]
 }
 ```
-`type` ∈ `case | tool | vehicle | mo | suspect | jurisdiction`. Frontend colors by `type`.
+`type` ∈ `case | tool | vehicle | mo | suspect | jurisdiction | alibi | receipt | evidence`.
+Frontend colors by `type`. After a successful `POST /ingest-file`, the graph also includes
+a session evidence node whose `id` matches the upload response's `graph_node_id`.
 
 ### `GET /timeline`
 ```json
@@ -59,3 +61,20 @@ stay) so the UI can animate the subgraph removal.
 
 ### `GET /benchmark`
 Serves `benchmark/results.json` for the in-app benchmark chart.
+
+### `POST /ingest-file`
+Accepts multipart form data with one `file` field. In LIVE mode, the backend extracts text
+for the detected modality, calls `remember()`, and adds an evidence node to the session graph.
+In DEGRADED mode, it returns the same response shape without writing to Cognee.
+```json
+{
+  "ok": true,
+  "filename": "case-note.txt",
+  "size_bytes": 148,
+  "dataset": "coldcases",
+  "mode": "live",
+  "type": "text",
+  "description": null,
+  "graph_node_id": "evidence:upload-1"
+}
+```
