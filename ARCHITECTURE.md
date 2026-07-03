@@ -247,7 +247,14 @@ Models legal record expungement: removes one dataset's subgraph while leaving ev
 node/edge intact. Exercised by `POST /expunge`.
 
 `reset_all()` is a dev convenience (`cognee.prune.prune_data()` +
-`cognee.prune.prune_system()`) for wiping everything, used by `ingest.py --reset`.
+`cognee.prune.prune_system(metadata=True)`) for wiping everything, used by
+`ingest.py --reset`. Metadata must be pruned too; otherwise Cognee can deduplicate
+re-added documents after the graph/vector stores have been deleted.
+
+The narrated demo uses `remember_many()` to stage all 11 hero-case documents, then calls
+the same typed `cognify()` path with `data_per_batch=1` and `chunk_size=1200`. This keeps
+structured extraction within the local Ollama model's context window without rebuilding
+the whole growing graph once per document.
 
 ---
 
@@ -260,7 +267,7 @@ and either calls into `memory_service` or returns curated mock JSON from
 | Route | Method | LIVE behavior | DEGRADED behavior |
 |---|---|---|---|
 | `/health` | GET | — | Reports `{"ok": true, "mode": "live"|"degraded"}` |
-| `/graph` | GET | *(currently always mock — see TODO in code)* | Returns curated `graph.json` |
+| `/graph` | GET | Returns curated `graph.json` plus evidence nodes added by successful uploads in this backend session | Same session graph shape |
 | `/graph/temporal` | GET | Filters the same graph client-side by `?time=` cutoff (nodes with no `date` are always visible; edges kept only if both endpoints are visible) | same |
 | `/timeline` | GET | — | Returns `timeline.json` |
 | `/contradictions` | GET | Runs two `recall()` GRAPH queries (general contradiction + specific alibi-vs-motel check) and attaches the live answer to the curated contradiction | Curated contradictions from `graph.json` |
@@ -278,7 +285,7 @@ and either calls into `memory_service` or returns curated mock JSON from
 | `/report` | GET | Runs 5 `recall()` GRAPH queries (suspect, MO, alibi contradiction, cross-jurisdiction link, recommendation) and assembles them into report sections | Canned 5-section report |
 | `/suspect-timeline` | GET | `recall()` GRAPH query asking for a full chronological reconstruction | Canned 6-event timeline |
 | `/transcribe` | POST | `transcribe_audio()` (Whisper) | Canned message |
-| `/ingest-file` | POST | Dispatches to the per-modality extractor (§4), then `memory_service.remember()` on the extracted text | Extractor still runs description for image/audio/video where possible; otherwise explanatory stub text; nothing is actually ingested |
+| `/ingest-file` | POST | Dispatches to the per-modality extractor (§4), then `memory_service.remember()` on the extracted text; returns `graph_node_id` and adds the uploaded file as an evidence node in the session graph | Returns the same response/graph-node shape without writing to Cognee |
 
 `known_doc_ids()`/`extract_ids()` are the shared helpers that regex-scan a hero-case
 `DOC_ID:` header set and map any retriever's raw output back to citeable source IDs —

@@ -19,6 +19,13 @@
 | `datasets.get_status` | `await cognee.datasets.get_status([dataset_ids])` — takes **dataset UUIDs**, not names; returns `{id: {pipeline: status}}`. Not needed in the synchronous flow. |
 | `prune` | `await cognee.prune.prune_data()` and `await cognee.prune.prune_system(graph=True, vector=True, metadata=False, cache=True)`. ColdCache's clean reset passes `metadata=True`; otherwise stale document metadata can deduplicate re-added files after the graph/vector stores have been deleted. |
 
+The narrated demo stages its 11 case documents together, then calls `cognify()` with
+`data_per_batch=1` and `chunk_size=1200`. This keeps extraction serial and each structured
+response inside the local Ollama model's context window; the default batch of 20 launches
+all document extractions together and can stall the demo.
+`ColdCaseNode` also normalizes a model-emitted `null` description to the empty string,
+preserving Cognee's required string field without retrying an otherwise valid extraction.
+
 ## Backend startup behavior
 `backend/main.py` loads the repository `.env` before deciding LIVE vs DEGRADED mode. The
 documented `uvicorn backend.main:app --port 8000` command therefore uses the configured
