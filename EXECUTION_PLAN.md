@@ -100,8 +100,8 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
 - [x] Wire frontend to live backend (uvicorn + verify all 15 endpoints respond correctly)
 - [x] Test all 8 panels against live Cognee (not just mock)
 - [x] Test drag-drop ingestion end-to-end (upload new doc → appears in graph)
-- [ ] Dry-run demo.py twice on clean state
-- [ ] Fix any bugs discovered during integration
+- [x] Dry-run demo.py twice on clean state
+- [x] Fix any bugs discovered during integration
 
 ### Phase 4 — Content & Submission prep
 - [ ] Benjy: record 2-min demo video (screen + voiceover)
@@ -111,7 +111,7 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
 - [ ] All: browse Cognee GitHub issues, claim + submit 1-2 real PRs ($100 each)
 
 ### Phase 5 — Final QA & Submit
-- [ ] Clean-clone test: fresh venv, follow README from scratch, confirm everything works
+- [x] Clean-clone test: fresh venv, follow README from scratch, confirm everything works
 - [ ] Make repo public
 - [ ] Tag v1.0
 - [ ] Fill submission form: repo link, video link, blog link, 4-API writeup, AI disclosure, team
@@ -127,7 +127,7 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
 - [ ] 2-min demo video uploaded
 - [ ] AI disclosure in submission
 - [ ] Blog published + social posts live
-- [ ] Clean-clone test passes
+- [x] Clean-clone test passes
 
 ---
 
