@@ -1,0 +1,83 @@
+{
+  "before": {
+    "rows": [
+      {
+        "id": "q07",
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ranked_top5": [
+          "RV-0788-FOR",
+          "MH-0312-FOR",
+          "RV-0788-NARR",
+          "MARSH-ALIBI",
+          "MH-0312-WIT"
+        ]
+      },
+      {
+        "id": "q17",
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "mrr": 0.5,
+        "ranked_top5": [
+          "MH-0312-FOR",
+          "MARSH-ALIBI",
+          "MARSH-RECEIPT",
+          "MH-0102-ARR",
+          "RV-0788-NARR"
+        ]
+      },
+      {
+        "id": "q14",
+        "recall@3": 0.25,
+        "recall@5": 0.25,
+        "mrr": 0.3333333333333333,
+        "ranked_top5": [
+          "MARSH-RECEIPT",
+          "MH-0102-FOR",
+          "RV-0788-FOR",
+          "MARSH-ALIBI",
+          "RV-0788-WIT"
+        ]
+      }
+    ],
+    "avg_recall@3": 0.75,
+    "avg_recall@5": 0.75,
+    "avg_mrr": 0.611
+  },
+  "after": {
+    "rows": [
+      {
+        "id": "q07",
+        "recall@3": 0.0,
+        "recall@5": 0.0,
+        "mrr": 0.0,
+        "ranked_top5": []
+      },
+      {
+        "id": "q17",
+        "recall@3": 0.0,
+        "recall@5": 0.0,
+        "mrr": 0.0,
+        "ranked_top5": []
+      },
+      {
+        "id": "q14",
+        "recall@3": 0.0,
+        "recall@5": 0.0,
+        "mrr": 0.0,
+        "ranked_top5": []
+      }
+    ],
+    "avg_recall@3": 0.0,
+    "avg_recall@5": 0.0,
+    "avg_mrr": 0.0
+  },
+  "delta": {
+    "recall@3": -0.75,
+    "mrr": -0.611
+  },
+  "hunch": "Detective hunch: the same 8mm left-nick pry blade signature appears in BOTH the Maple Heights and Riverside cases. This cross-jurisdiction tool match was never flagged because the two departments don't share a database. The motel receipt (Grand Stay Inn, 4.2 miles from 902 Riverside Lane at 00:48) directly contradicts Marsh's alibi claim of being 300 miles away. Recommend cross-reference of all pry-tool forensic reports across both jurisdictions.",
+  "dataset": "improve_test",
+  "session_id": "detective-001"
+}
