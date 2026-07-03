@@ -182,6 +182,7 @@ MOCK = ROOT / "frontend" / "mock"
 BENCH = ROOT / "benchmark" / "results.json"
 HERO = ROOT / "data" / "hero_case"
 DATASET = "coldcases"
+UPLOADED_NODES: list[dict] = []
 
 # --- try to go LIVE; fall back to DEGRADED cleanly ---------------------------
 LIVE = False
@@ -189,6 +190,9 @@ mem = None
 try:
     import os
     import sys
+    from dotenv import load_dotenv
+
+    load_dotenv(ROOT / ".env")
     sys.path.insert(0, str(ROOT / "backend"))
     if os.getenv("LLM_API_KEY"):
         import memory_service as mem  # noqa
@@ -261,7 +265,9 @@ def health():
 def graph():
     # TODO(live): derive from Cognee TRIPLET_COMPLETION (this version has no INSIGHTS).
     # The curated graph is faithful to the hero case and is the reliable demo visual.
-    return mock("graph.json")
+    payload = mock("graph.json")
+    payload["nodes"].extend(UPLOADED_NODES)
+    return payload
 
 
 @app.get("/graph/temporal")
@@ -272,7 +278,7 @@ def graph_temporal(time: str = None):
     field, e.g. jurisdictions, are treated as always-visible context anchors)
     plus edges whose endpoints are both currently visible.
     """
-    full = mock("graph.json")
+    full = graph()
     if not time:
         return full
     nodes = full.get("nodes", [])
@@ -743,6 +749,14 @@ async def ingest_file(file: UploadFile = File(...)):
     if LIVE and extracted_text:
         await mem.remember(extracted_text, dataset=DATASET)
 
+    upload_id = f"evidence:upload-{len(UPLOADED_NODES) + 1}"
+    UPLOADED_NODES.append({
+        "id": upload_id,
+        "label": fname,
+        "type": "evidence",
+        "modality": modality,
+    })
+
     return {
         "ok": True,
         "filename": fname,
@@ -751,4 +765,5 @@ async def ingest_file(file: UploadFile = File(...)):
         "mode": "live" if LIVE else "degraded",
         "type": modality,
         "description": description,
+        "graph_node_id": upload_id,
     }
