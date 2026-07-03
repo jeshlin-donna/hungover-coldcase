@@ -100,8 +100,8 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
 - [x] Wire frontend to live backend (uvicorn + verify all 15 endpoints respond correctly)
 - [x] Test all 8 panels against live Cognee (not just mock)
 - [x] Test drag-drop ingestion end-to-end (upload new doc → appears in graph)
-- [ ] Dry-run demo.py twice on clean state
-- [ ] Fix any bugs discovered during integration
+- [x] Dry-run demo.py twice on clean state
+- [x] Fix any bugs discovered during integration
 
 ### Phase 4 — Content & Submission prep
 - [ ] Benjy: record 2-min demo video (screen + voiceover)

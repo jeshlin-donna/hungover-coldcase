@@ -86,7 +86,14 @@ async def remember(text: str, dataset: str = DEFAULT_DATASET) -> None:
     await cognify(dataset)
 
 
-async def cognify(dataset: str = DEFAULT_DATASET, typed_schema: bool = True) -> None:
+async def remember_many(texts: list[str], dataset: str = DEFAULT_DATASET) -> None:
+    """Stage a document batch, then build it serially for small local LLMs."""
+    await cognee.add(texts, dataset_name=dataset)
+    await cognify(dataset, data_per_batch=1, chunk_size=1200)
+
+
+async def cognify(dataset: str = DEFAULT_DATASET, typed_schema: bool = True,
+                  data_per_batch: int = 20, chunk_size: int = None) -> None:
     """Build/refresh the graph. cognify() is synchronous by default (run_in_background=False)
     — it blocks until the graph is built, so no status polling is needed at our scale.
 
@@ -100,9 +107,13 @@ async def cognify(dataset: str = DEFAULT_DATASET, typed_schema: bool = True) -> 
             datasets=[dataset],
             graph_model=ColdCaseGraph,
             custom_prompt=COLD_CASE_EXTRACTION_PROMPT,
+            data_per_batch=data_per_batch,
+            chunk_size=chunk_size,
         )
     else:
-        await cognee.cognify(datasets=[dataset])          # verified: cognify(datasets=[...])
+        await cognee.cognify(
+            datasets=[dataset], data_per_batch=data_per_batch, chunk_size=chunk_size
+        )
 
 
 async def wait_for_indexing(dataset_ids: list, timeout_s: int = 300) -> None:
