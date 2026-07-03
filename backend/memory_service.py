@@ -86,10 +86,11 @@ async def remember(text: str, dataset: str = DEFAULT_DATASET) -> None:
     await cognify(dataset)
 
 
-async def remember_many(texts: list[str], dataset: str = DEFAULT_DATASET) -> None:
+async def remember_many(texts: list[str], dataset: str = DEFAULT_DATASET,
+                        data_per_batch: int = 1, chunk_size: int = 1200) -> None:
     """Stage a document batch, then build it serially for small local LLMs."""
     await cognee.add(texts, dataset_name=dataset)
-    await cognify(dataset, data_per_batch=1, chunk_size=1200)
+    await cognify(dataset, data_per_batch=data_per_batch, chunk_size=chunk_size)
 
 
 async def cognify(dataset: str = DEFAULT_DATASET, typed_schema: bool = True,
