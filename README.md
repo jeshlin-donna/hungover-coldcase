@@ -78,9 +78,13 @@ You should see all 5 checks pass (remember → recall → improve → forget →
 **Step 4 — Ingest the case files**
 ```bash
 source .venv/bin/activate
+python scripts/generate_corpus.py
 python scripts/ingest.py --reset
 ```
-This loads `data/hero_case/` (11 case documents) and `data/raw/` (250 noise docs) into Cognee's knowledge graph. Takes 2–5 minutes.
+The generated noise corpus is intentionally gitignored, so a fresh clone must create it
+before ingestion. These commands load `data/hero_case/` (11 case documents) and
+`data/raw/` (250 noise docs) into Cognee's knowledge graph. Runtime depends heavily on
+the configured LLM; local Ollama can take substantially longer than a hosted provider.
 
 **Step 5 — Start the backend**
 ```bash

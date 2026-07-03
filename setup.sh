@@ -59,7 +59,8 @@ if [ ! -f .env ]; then
 fi
 
 # 5. key check
-set +u; KEY=$(grep -E '^LLM_API_KEY=' .env | cut -d= -f2-); set -u
+set +u; KEY=$(grep -E '^LLM_API_KEY=' .env | head -1 | cut -d= -f2- |
+  sed -E 's/[[:space:]]*#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//'); set -u
 if [ -z "${KEY// }" ] || [ "${KEY}" = "sk-..." ]; then
   warn "LLM_API_KEY is not set in .env yet."
   echo

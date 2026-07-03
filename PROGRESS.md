@@ -1,6 +1,6 @@
 # ColdCache — Progress Tracker
 
-> **Last updated:** 2026-07-03 — Ollama pipeline re-verified with gemma4:e4b; benchmark_improve.py running
+> **Last updated:** 2026-07-03 — Clean-clone QA passed; full 3-way benchmark remains current
 > Detailed plan: `EXECUTION_PLAN.md`
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo
@@ -38,13 +38,16 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 | **Real Cognee graph recall numbers (BEFORE improve())** | Sam | Live `cognee_graph` recall on 3 multi-hop queries: avg R@3=0.75, avg MRR=0.611. q07 (cross-jurisdiction forensic link): R@3=1.0, MRR=1.0. q17 (alibi contradiction): R@3=1.0, MRR=0.5. `improve()` itself confirmed working — AFTER recall timed out due to `gemma4:e4b` 4096-token context limit on session agent structured output (model constraint, not Cognee bug). Results in `benchmark/improve_results.json`. |
 | Test all 8 panels against live backend (uvicorn + real Cognee) | Sam/Jesh | ✅ |
 | Test drag-drop ingestion end-to-end (upload new doc → appears in graph) | Sam/Jesh | ✅ |
+| Dry-run demo.py twice on clean state | Sam/Jesh | ✅ |
+| Fix any bugs discovered during integration | Sam/Jesh | ✅ |
+| Clean-clone QA test | All | ✅ Fresh venv setup, keyless/degraded API contract, generated corpus, frontend production build, and live 5-phase Cognee smoke test verified from scratch. |
 
 ---
 
 ## 🔄 In progress
 | Item | ETA | Notes |
 |---|---|---|
-| Dry-run demo.py twice on clean state | in progress | Clean reset fixed; local `gemma4:e4b` run still pending. |
+| **Full 3-way benchmark** (naive + cognee_vector + cognee_graph) | in progress | Naive leg done. `benchmark_improve.py` complete — BEFORE cognee_graph R@3=0.75 confirmed live. Full 261-doc benchmark (`benchmark.py`) is the current task. |
 
 ---
 
@@ -58,7 +61,6 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 | 6 | Publish blog post (Medium/Dev.to) | Sam |
 | 7 | Social posts live on submission day | Benjy |
 | 8 | Cognee GitHub PRs ($100 each) | All |
-| 9 | Clean-clone QA test | All |
 | 10 | Make repo public · tag v1.0 · submit form | Jesh |
 
 ---

@@ -206,23 +206,12 @@ async def main(naive_only: bool) -> None:
         # Ingest corpus into Cognee first (idempotent-ish; prune for a clean run).
         import memory_service as mem
         from memory_service import RecallMode
-        failed = []
-        for i, (did, text) in enumerate(docs.items(), start=1):
-            try:
-                # Groq occasionally returns a malformed structured-output response
-                # deterministically for a given chunk, which makes Cognee's internal
-                # tenacity retry loop retry forever (same bad input -> same bad output).
-                # Bound each doc's ingestion so one stuck doc can't hang the whole run.
-                await asyncio.wait_for(
-                    mem.remember(text, dataset=mem.DEFAULT_DATASET), timeout=120
-                )
-            except Exception as e:
-                failed.append(did)
-                print(f"[{i}/{len(docs)}] remember() FAILED for {did}: {type(e).__name__}: {str(e)[:200]}")
-            else:
-                print(f"[{i}/{len(docs)}] remember() ok for {did}")
-        if failed:
-            print(f"WARNING: {len(failed)}/{len(docs)} docs failed to ingest and were skipped: {failed}")
+        print(f"staging {len(docs)} documents, then building the graph once...")
+        await mem.remember_many(
+            list(docs.values()), dataset=mem.DEFAULT_DATASET,
+            data_per_batch=1, chunk_size=1200,
+        )
+        print(f"remember() ok for {len(docs)} documents")
         results.append(await evaluate(
             CogneeRetriever(RecallMode.VECTOR, ids, "cognee_vector"), queries))
         results.append(await evaluate(
