@@ -1,6 +1,6 @@
 # ColdCache — Progress Tracker
 
-> **Last updated:** 2026-07-03 — Ollama pipeline re-verified with gemma4:e4b; benchmark_improve.py running
+> **Last updated:** 2026-07-03 — Clean-clone QA passed; full 3-way benchmark remains current
 > Detailed plan: `EXECUTION_PLAN.md`
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo
@@ -40,6 +40,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 | Test drag-drop ingestion end-to-end (upload new doc → appears in graph) | Sam/Jesh | ✅ |
 | Dry-run demo.py twice on clean state | Sam/Jesh | ✅ |
 | Fix any bugs discovered during integration | Sam/Jesh | ✅ |
+| Clean-clone QA test | All | ✅ Fresh venv setup, keyless/degraded API contract, generated corpus, frontend production build, and live 5-phase Cognee smoke test verified from scratch. |
 
 ---
 
@@ -60,7 +61,6 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 | 6 | Publish blog post (Medium/Dev.to) | Sam |
 | 7 | Social posts live on submission day | Benjy |
 | 8 | Cognee GitHub PRs ($100 each) | All |
-| 9 | Clean-clone QA test | All |
 | 10 | Make repo public · tag v1.0 · submit form | Jesh |
 
 ---

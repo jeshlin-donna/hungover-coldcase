@@ -73,6 +73,8 @@ class RecallResult:
 
 
 DEFAULT_DATASET = "coldcases"
+_triplet_ready_datasets: set[str] = set()
+_triplet_locks: dict[str, asyncio.Lock] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +117,24 @@ async def cognify(dataset: str = DEFAULT_DATASET, typed_schema: bool = True,
         await cognee.cognify(
             datasets=[dataset], data_per_batch=data_per_batch, chunk_size=chunk_size
         )
+    _triplet_ready_datasets.discard(dataset)
+
+
+async def prepare_insights(dataset: str = DEFAULT_DATASET) -> None:
+    """Build Cognee's triplet index once per dataset for TRIPLET_COMPLETION recall."""
+    if dataset in _triplet_ready_datasets:
+        return
+    lock = _triplet_locks.setdefault(dataset, asyncio.Lock())
+    async with lock:
+        if dataset in _triplet_ready_datasets:
+            return
+        from cognee.memify_pipelines.create_triplet_embeddings import (
+            create_triplet_embeddings,
+        )
+        from cognee.modules.users.methods import get_default_user
+
+        await create_triplet_embeddings(user=await get_default_user(), dataset=dataset)
+        _triplet_ready_datasets.add(dataset)
 
 
 async def wait_for_indexing(dataset_ids: list, timeout_s: int = 300) -> None:
@@ -139,6 +159,8 @@ async def wait_for_indexing(dataset_ids: list, timeout_s: int = 300) -> None:
 # ---------------------------------------------------------------------------
 async def recall(query: str, mode: RecallMode = RecallMode.GRAPH,
                  dataset: str = DEFAULT_DATASET) -> RecallResult:
+    if mode == RecallMode.INSIGHTS:
+        await prepare_insights(dataset)
     st = _search_type_for(mode)
     if st is not None:
         # verified: search(query_text, query_type=SearchType, datasets=[names])
