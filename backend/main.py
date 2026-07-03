@@ -189,6 +189,9 @@ mem = None
 try:
     import os
     import sys
+    from dotenv import load_dotenv
+
+    load_dotenv(ROOT / ".env")
     sys.path.insert(0, str(ROOT / "backend"))
     if os.getenv("LLM_API_KEY"):
         import memory_service as mem  # noqa
