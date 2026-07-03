@@ -30,6 +30,7 @@ def show(label, obj):
 
 async def main():
     print("SearchType imported as:", mem.SearchType)
+    failures = []
 
     print("\n[1/5] remember()")
     await mem.remember(
@@ -47,6 +48,7 @@ async def main():
             show(f"recall:{mode.value}", r.raw)
         except Exception as e:
             print(f"recall:{mode.value} FAILED -> {type(e).__name__}: {e}")
+            failures.append(f"recall:{mode.value}")
 
     print("\n[3/5] log_hunch() -> session memory")
     try:
@@ -55,6 +57,7 @@ async def main():
         print("log_hunch OK")
     except Exception as e:
         print(f"log_hunch FAILED -> {type(e).__name__}: {e}")
+        failures.append("log_hunch")
 
     print("\n[4/5] resolve_case() -> improve(session_ids=...)")
     try:
@@ -62,6 +65,7 @@ async def main():
         print("resolve_case/improve OK")
     except Exception as e:
         print(f"resolve_case FAILED -> {type(e).__name__}: {e}")
+        failures.append("resolve_case")
 
     print("\n[5/5] expunge() -> forget(dataset=...)")
     try:
@@ -69,6 +73,10 @@ async def main():
         print("expunge/forget OK")
     except Exception as e:
         print(f"expunge FAILED -> {type(e).__name__}: {e}")
+        failures.append("expunge")
+
+    if failures:
+        raise RuntimeError(f"Smoke test failed: {', '.join(failures)}")
 
     print("\nDONE. Signatures are already verified against source — what matters here is "
           "the RecallResponse shape printed above. If results don't contain the 'DOC_ID:' "

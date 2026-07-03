@@ -8,7 +8,7 @@
 |---|---|
 | `SearchType` import path | `from cognee import SearchType` (re-exported from `cognee.api.v1.search`) |
 | `SearchType` members | `SUMMARIES, CHUNKS, RAG_COMPLETION, HYBRID_COMPLETION, TRIPLET_COMPLETION, GRAPH_COMPLETION, GRAPH_COMPLETION_DECOMPOSITION, GRAPH_SUMMARY_COMPLETION, CYPHER, NATURAL_LANGUAGE, GRAPH_COMPLETION_COT, GRAPH_COMPLETION_CONTEXT_EXTENSION, FEELING_LUCKY, TEMPORAL, CODING_RULES, CHUNKS_LEXICAL, AGENTIC_COMPLETION` |
-| ⚠️ `INSIGHTS`? | **Does NOT exist in this version.** Use `TRIPLET_COMPLETION` for relationships/triples. (Old scaffold assumed INSIGHTS → would crash.) |
+| ⚠️ `INSIGHTS`? | **Does NOT exist in this version.** Use `TRIPLET_COMPLETION` for relationships/triples. Its triplet embeddings must be created after `cognify()`; `memory_service.prepare_insights()` does this lazily on the first insights recall. (Old scaffold assumed INSIGHTS → would crash.) |
 | `add` | `await cognee.add(data, dataset_name="main_dataset", ..., run_in_background=False)` |
 | `cognify` | `await cognee.cognify(datasets=Union[str,list]=None, ..., run_in_background=False)` — **synchronous by default** |
 | `search` | `await cognee.search(query_text, query_type=SearchType.GRAPH_COMPLETION, datasets=Optional[list|str], ...)` → `list[RecallResponse]` |
@@ -18,6 +18,14 @@
 | `forget` | `await cognee.forget(data_id=None, dataset=None, dataset_id=None, everything=False, memory_only=False)`. `forget(dataset="x")` deletes the whole dataset; `memory_only=True` keeps raw files. |
 | `datasets.get_status` | `await cognee.datasets.get_status([dataset_ids])` — takes **dataset UUIDs**, not names; returns `{id: {pipeline: status}}`. Not needed in the synchronous flow. |
 | `prune` | `await cognee.prune.prune_data()` and `await cognee.prune.prune_system(graph=True, vector=True, metadata=False, cache=True)`. ColdCache's clean reset passes `metadata=True`; otherwise stale document metadata can deduplicate re-added files after the graph/vector stores have been deleted. |
+
+The narrated demo and full benchmark stage their documents together, then call `cognify()`
+with `data_per_batch=1` and `chunk_size=1200`. This keeps extraction serial and each
+structured response inside the local Ollama model's context window; the default batch of
+20 launches document extractions together and can stall a local run. It also avoids
+rebuilding the whole growing graph after every document.
+`ColdCaseNode` also normalizes a model-emitted `null` description to the empty string,
+preserving Cognee's required string field without retrying an otherwise valid extraction.
 
 ## Backend startup behavior
 `backend/main.py` loads the repository `.env` before deciding LIVE vs DEGRADED mode. The

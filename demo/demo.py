@@ -80,9 +80,10 @@ async def main(reset: bool) -> None:
     docs = load_case_docs()
     slow(f"Ingesting {len(docs)} case documents "
          f"(Maple Heights PD + Riverside PD — no shared records system)...")
-    for name, text in docs:
-        await mem.remember(text, dataset=DATASET)
-        slow(f"   ✓ indexed {name}", 0.15)
+    for name, _ in docs:
+        slow(f"   ✓ staged {name}", 0.05)
+    await mem.remember_many([text for _, text in docs], dataset=DATASET)
+    slow("   ✓ indexed all case documents", 0.15)
     slow("\nAll evidence is now in one knowledge graph. The departments never were.")
 
     # PHASE 2 — SESSION HUNCH

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 # Subclass Cognee's OWN Node/Edge/KnowledgeGraph (rather than independent BaseModels).
 # Cognee's downstream graph-building/summarization tasks do isinstance()/structural checks
@@ -50,6 +50,11 @@ class ColdCaseNode(Node):
     properties — populate only the ones relevant to `type`."""
 
     type: NodeType  # narrows Node.type: str -> our 5-value vocabulary
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def normalize_description(cls, value):
+        return value or ""
 
     role: Optional[str] = Field(
         default=None, description="Person only: Suspect | Witness | Victim."
