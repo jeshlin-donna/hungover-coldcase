@@ -25,7 +25,7 @@ const TYPE_LABELS = {
   jurisdiction: "Jurisdiction",
   alibi: "Alibi claim",
   receipt: "Card record",
-  evidence: "Uploaded evidence",
+  evidence: "Evidence item",
   person: "Person",
   location: "Location",
 };
