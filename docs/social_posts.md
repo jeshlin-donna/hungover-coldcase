@@ -16,8 +16,8 @@ Every detective had a piece of the evidence. Nobody had the shared memory to con
 **Tweet 2**
 We built a knowledge graph over all the evidence using self-hosted @cognee_ai and ran a 3-way benchmark: naive vector vs Cognee RAG vs Cognee graph on multi-hop queries.
 
-Naive vector multi-hop R@3: 0.417 (vs single-hop: 0.742)
-That 74% → 42% collapse on cross-jurisdiction queries is the whole thesis — and exactly what graph traversal is designed to close.
+Naive vector multi-hop R@3: 0.401 (vs single-hop: 0.500)
+That 50% → 40% collapse on cross-jurisdiction queries is the whole thesis — and exactly what graph traversal is designed to close.
 
 Full benchmark results in benchmark/results.json.
 
