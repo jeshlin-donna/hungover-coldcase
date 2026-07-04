@@ -2,56 +2,69 @@ import { useEffect, useState } from "react";
 import { api } from "./api.js";
 import ChatPanel from "./components/ChatPanel.jsx";
 import GraphPanel from "./components/GraphPanel.jsx";
-import ComparePanel from "./components/ComparePanel.jsx";
 import TimelinePanel from "./components/TimelinePanel.jsx";
-import MissingHoursPanel from "./components/MissingHoursPanel.jsx";
-import NexusPanel from "./components/NexusPanel.jsx";
 import InterrogationPanel from "./components/InterrogationPanel.jsx";
 import WhatIfPanel from "./components/WhatIfPanel.jsx";
 import UploadPanel from "./components/UploadPanel.jsx";
 import SuspectTimelinePanel from "./components/SuspectTimelinePanel.jsx";
-import CogneePanel from "./components/CogneePanel.jsx";
 
-const TABS = [
-  { id: "chat",             label: "Case Chat",        icon: "💬",
-    blurb: "Ask plain-English questions about the case; answers are sourced live from the knowledge graph.",
-    tryText: "Try: \"Who appears across both Millbrook and Riverside cases?\"" },
-  { id: "graph",            label: "Evidence Board",   icon: "🕸️",
-    blurb: "The interactive case graph — people, places, tools, and evidence as connected nodes.",
-    tryText: "Try: drag the temporal slider, then click \"Run alibi check\" to see the contradiction light up." },
-  { id: "compare",          label: "Graph vs Vector",  icon: "⚖️",
-    blurb: "Side-by-side proof that graph search finds cross-jurisdiction links plain vector search misses.",
-    tryText: "Try: run the same query in both modes and compare the answers." },
-  { id: "cognee",           label: "Cognee APIs",      icon: "🧠",
-    blurb: "Live playground for the 4 core Cognee calls (remember / recall / improve / forget) with real code shown.",
-    tryText: "Try: click \"Run\" on any card to execute that API against this case live." },
-  { id: "timeline",         label: "Timeline",         icon: "📅",
-    blurb: "Chronological list of every incident in the case, filterable by date.",
-    tryText: "Try: drag the slider to replay the case as it would've looked mid-investigation." },
-  { id: "missing-hours",    label: "Missing Hours",    icon: "🕳️",
-    blurb: "Flags gaps in a suspect's timeline where there's no evidence of their location — investigative leads.",
-    tryText: "Try: see which time windows need more evidence pulled (e.g. CCTV, cell records)." },
-  { id: "nexus",            label: "Nexus Point",      icon: "🔗",
-    blurb: "Finds the shortest hidden path connecting two seemingly unrelated people or pieces of evidence.",
-    tryText: "Try: pick two nodes and see how many hops separate them." },
-  { id: "interrogation",    label: "Interrogation",    icon: "🎯",
-    blurb: "Generates tactical questions for a suspect, built from contradictions between their statements and hard evidence.",
-    tryText: "Try: generate a question that traps the suspect's alibi claim." },
-  { id: "whatif",           label: "What-If",          icon: "🧪",
-    blurb: "A safe sandbox to test hypotheses (e.g. \"what if this witness is unreliable?\") without touching real data.",
-    tryText: "Try: zero out a witness's reliability score and see how the case's alibi integrity changes." },
-  { id: "upload",           label: "Messy Desk",       icon: "📁",
+const MAIN_TABS = [
+  {
+    id: "upload",
+    label: "Messy Desk",
+    icon: "📁",
     blurb: "Drag-and-drop ingestion for new case files (audio, photos, text) straight into the knowledge graph.",
-    tryText: "Try: drop a file and watch it get parsed into graph nodes in real time." },
-  { id: "suspect-timeline", label: "Suspect Timeline", icon: "🕵️",
-    blurb: "Reconstructs a single suspect's movements minute-by-minute from all ingested evidence.",
-    tryText: "Try: see Daniel Marsh's full reconstructed timeline on the night of the burglary." },
+    tryText: "Try: drop a file and watch it get parsed into graph nodes in real time.",
+  },
 ];
+
+const CHAT_TAB = {
+  id: "chat",
+  label: "Case Chat",
+  icon: "💬",
+  blurb: "Ask plain-English questions about the case; answers are sourced live from the knowledge graph.",
+  tryText: "Try: \"Who appears across both Millbrook and Riverside cases?\"",
+};
+
+const SUB_TABS = [
+  {
+    id: "graph",
+    label: "Evidence Board",
+    icon: "🕸️",
+    blurb: "The interactive case graph — people, places, tools, and evidence as connected nodes.",
+    tryText: "Try: drag the temporal slider, then click \"Run alibi check\" to see the contradiction light up.",
+  },
+  {
+    id: "timeline",
+    label: "Timeline",
+    icon: "📅",
+    blurb: "Chronological case view with missing-hour detection and suspect movement reconstruction in one place.",
+    tryText: "Try: replay the case, inspect timeline gaps, and review suspect movements together.",
+  },
+  {
+    id: "interrogation",
+    label: "Interrogation",
+    icon: "🎯",
+    blurb: "Generates tactical questions for a suspect, built from contradictions between their statements and hard evidence.",
+    tryText: "Try: generate a question that traps the suspect's alibi claim.",
+  },
+  {
+    id: "whatif",
+    label: "What-If",
+    icon: "🤔",
+    blurb: "A safe sandbox to test hypotheses (e.g. \"what if this witness is unreliable?\") without touching real data.",
+    tryText: "Try: zero out a witness's reliability score and see how the case's alibi integrity changes.",
+  },
+];
+
+const NAV_TABS = SUB_TABS;
+const GUIDE_TABS = [MAIN_TABS[0], ...SUB_TABS, CHAT_TAB];
 
 const GUIDE_SEEN_KEY = "coldcache_guide_seen";
 
 export default function App() {
-  const [tab, setTab] = useState("chat");
+  const [tab, setTab] = useState("upload");
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [mode, setMode] = useState(null);
   const [stats, setStats] = useState({ nodes: 47, docs: 261, jurisdictions: 3, alibiBreak: true });
   const [improving, setImproving] = useState(false);
@@ -85,11 +98,14 @@ export default function App() {
 
   useEffect(() => {
     function onKey(e) {
-      // Don't intercept when user is typing in an input
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
-      const idx = parseInt(e.key) - 1;
-      if (!isNaN(idx) && idx >= 0 && idx < TABS.length) {
-        setTab(TABS[idx].id);
+      const idx = parseInt(e.key, 10) - 1;
+      if (idx === 0) {
+        setWorkspaceOpen(false);
+        setTab("upload");
+      } else if (idx > 0 && idx <= SUB_TABS.length) {
+        setWorkspaceOpen(true);
+        setTab(SUB_TABS[idx - 1].id);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -148,6 +164,11 @@ export default function App() {
     });
   }
 
+  function handleProceedToWorkspace() {
+    setWorkspaceOpen(true);
+    setTab("graph");
+  }
+
   function copyReportAsMarkdown() {
     if (!report) return;
     const lines = [`# ${report.title}`, ""];
@@ -169,8 +190,8 @@ export default function App() {
         <div className="header-left">
           <div className="header-logo">🔍</div>
           <div className="header-title-group">
-            <h1>ColdCache · Cold Case Connector</h1>
-            <span className="header-case-label">CASE FILE: MARSH-0001 · MILLBROOK / RIVERSIDE · ACTIVE</span>
+            <h1>ColdCache</h1>
+            <span className="header-case-label">A Detective's Case Companion</span>
           </div>
 
           {improved && (
@@ -190,15 +211,7 @@ export default function App() {
         </div>
 
         <div className="header-right">
-          <span className={`badge ${mode || "offline"}`}>
-            {mode === "live"
-              ? "● backend: live"
-              : mode === "degraded"
-              ? "◐ backend: degraded"
-              : mode === "offline"
-              ? "○ backend: offline"
-              : "backend: …"}
-          </span>
+          
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <button
               className="btn-improve"
@@ -206,27 +219,20 @@ export default function App() {
               style={{ background: "linear-gradient(135deg,#1a1f2a 0%,#0d1220 100%)", borderColor: "var(--accent)", color: "var(--accent)" }}
               title="What does each tab do?"
             >
-              ❓ How this works
+              User Manual
             </button>
-            <button
-              className="btn-improve"
-              onClick={handleImprove}
-              disabled={improving}
-            >
-              {improving ? "Improving…" : "⚡ Improve"}
-            </button>
-            <button
-              className="btn-improve"
-              onClick={handleExportReport}
-              style={{ background: "linear-gradient(135deg,#1a2a1a 0%,#0d1f0d 100%)", borderColor: "var(--win)", color: "var(--win)" }}
-            >
-              Export Report
-            </button>
+            
+            
           </div>
         </div>
       </header>
 
-      <div className="stats-ribbon">
+      {workspaceOpen && (
+        <div className="stats-ribbon">
+         <span className="stat-item">
+          <span className="stat-key" style={{color:"var(--muted)"}}>ACTIVE CASE:</span>
+          <span className="stat-val" style={{color:"var(--text)"}}>Daniel Marsh · Millbrook / Riverside</span>
+        </span>
         <span className="stat-item">
           <span className="stat-dot" style={{background:"var(--accent)"}}/>
           <span className="stat-val">{stats.nodes}</span>
@@ -239,66 +245,80 @@ export default function App() {
           <span className="stat-key">docs ingested</span>
         </span>
         <span className="stat-sep">·</span>
-        <span className="stat-item">
-          <span className="stat-dot" style={{background:"var(--warning)"}}/>
-          <span className="stat-val">{stats.jurisdictions}</span>
-          <span className="stat-key">jurisdictions</span>
-        </span>
         <span className="stat-sep">·</span>
+        
         <span className="stat-item alibi-break">
+          <span className="stat-key" style={{color:"var(--muted)"}}> STATUS:</span>
           <span style={{color:"var(--danger)"}}>⚠</span>
           <span className="stat-key" style={{color:"var(--danger)"}}>alibi break detected</span>
         </span>
         <span className="stat-sep stat-sep-right">·</span>
-        <span className="stat-item">
-          <span className="stat-key" style={{color:"var(--muted)"}}>ACTIVE CASE:</span>
-          <span className="stat-val" style={{color:"var(--text)"}}>Daniel Marsh · Millbrook / Riverside</span>
-        </span>
+       
       </div>
+      )}
 
-      <nav className="main-nav">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            className={tab === t.id ? "active" : ""}
-            onClick={() => setTab(t.id)}
-            title={t.blurb}
-          >
-            <span className="tab-icon">{t.icon}</span>
-            <span className="tab-label">{t.label}</span>
-          </button>
-        ))}
-      </nav>
-      <p className="kbd-hint">
-        Press <kbd>1</kbd>–<kbd>0</kbd> to switch panels · hover a tab for what it does ·{" "}
-        <button className="guide-link" onClick={() => setShowGuide(true)}>full guide</button>
-      </p>
+      {!workspaceOpen ? (
+        <div className="single-view" style={{ marginTop: 16 }}>
+          <div className="tab-window">
+            <div className="workspace-window-header">
+              <button className="back-to-desk" style={{ cursor: "default", opacity: 0.85 }}>
+                Messy Desk
+              </button>
+            </div>
 
-      <main>
-        <div key={tab} className="tab-panel-fade">
-          {tab === "chat" && <ChatPanel />}
-          {tab === "graph" && (
-            <GraphPanel
-              justImproved={justImproved}
-              graphData={graphData}
-              onGraphLoaded={setGraphData}
-            />
-          )}
-          {tab === "compare" && <ComparePanel />}
-          {tab === "cognee" && <CogneePanel />}
-          {tab === "timeline" && <TimelinePanel />}
-          {tab === "missing-hours" && <MissingHoursPanel />}
-          {tab === "nexus" && <NexusPanel />}
-          {tab === "interrogation" && <InterrogationPanel />}
-          {tab === "whatif" && <WhatIfPanel />}
-          {tab === "upload" && <UploadPanel onGraphUpdated={handleGraphUpdated} />}
-          {tab === "suspect-timeline" && <SuspectTimelinePanel />}
+            <main>
+              <div className="tab-panel-fade">
+                <UploadPanel onGraphUpdated={handleGraphUpdated} onNext={handleProceedToWorkspace} />
+              </div>
+            </main>
+          </div>
         </div>
-      </main>
+      ) : (
+        <div className="workspace-split" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1.2fr) minmax(360px, 420px)", gap: 16, marginTop: 16 }}>
+          <div>
+            <div className="tab-window">
+              <div className="workspace-window-header">
+                <button className="back-to-desk" onClick={() => { setWorkspaceOpen(false); setTab("upload"); }}>
+                  ← Messy Desk
+                </button>
+              </div>
 
-      <footer>
-        Synthetic data only · illustrative demo, not an operational tool.
-      </footer>
+              <nav className="sub-nav">
+                {NAV_TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    className={tab === t.id ? "active" : ""}
+                    onClick={() => setTab(t.id)}
+                    title={t.blurb}
+                  >
+                    <span className="tab-icon">{t.icon}</span>
+                    <span className="tab-label">{t.label}</span>
+                  </button>
+                ))}
+              </nav>
+
+              <main>
+                <div key={tab} className="tab-panel-fade">
+                  {tab === "graph" && (
+                    <GraphPanel
+                      justImproved={justImproved}
+                      graphData={graphData}
+                      onGraphLoaded={setGraphData}
+                    />
+                  )}
+                  {tab === "timeline" && <TimelinePanel />}
+                  {tab === "interrogation" && <InterrogationPanel />}
+                  {tab === "whatif" && <WhatIfPanel />}
+                </div>
+              </main>
+            </div>
+          </div>
+
+          <aside className="chat-aside" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <ChatPanel />
+          </aside>
+        </div>
+      )}
 
       {showGuide && (
         <div className="report-modal-overlay" onClick={closeGuide}>
@@ -310,7 +330,7 @@ export default function App() {
               different lens on the same underlying case graph. Click any row to jump straight there.
             </p>
             <div className="guide-list">
-              {TABS.map((t) => (
+              {GUIDE_TABS.map((t) => (
                 <button
                   key={t.id}
                   className="guide-row"
