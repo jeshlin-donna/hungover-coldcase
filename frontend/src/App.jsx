@@ -251,7 +251,7 @@ export default function App() {
 
       {workspaceOpen && (
         <div className="stats-ribbon">
-         <span className="stat-item">
+         <span className="stat-item case-label-item">
           <span className="stat-key" style={{color:"var(--muted)"}}>ACTIVE CASE:</span>
           <span className="stat-val" style={{color:"var(--text)"}}>{activeCase.title}</span>
         </span>

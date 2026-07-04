@@ -59,6 +59,12 @@ def _media_type_for(filename: str) -> str | None:
             ".png": "image/png", ".gif": "image/gif",
             ".webp": "image/webp"}.get(ext)
 
+_anthropic_client = None
+_groq_client = None
+_ollama_client = None
+_ollama_reachable_cache: dict = {"ok": False, "checked_at": 0.0}
+FALLBACK_STATE = {"active": False, "last_reason": None, "last_at": None}
+
 _VISION_PROMPT = (
     "You are analyzing evidence for a cold case investigation. "
     "Image filename: {filename}\n\n"
@@ -72,13 +78,13 @@ _VISION_PROMPT = (
 # --- Provider detection ----------------------------------------------------------
 
 def _using_groq() -> bool:
-    """True when the configured LLM endpoint is Groq (api.groq.com)."""
+    """True when the configured provider/endpoint is Groq (api.groq.com)."""
     import os
-    endpoint = os.getenv("LLM_ENDPOINT", "")
-    return "groq.com" in endpoint
 
+    provider = (os.getenv("LLM_PROVIDER") or "").lower()
+    endpoint = (os.getenv("LLM_ENDPOINT") or "").lower()
+    return provider == "groq" or "groq.com" in endpoint
 
-_groq_client = None
 
 def _get_groq_client():
     """Lazily construct and cache a Groq SDK client."""
@@ -95,64 +101,190 @@ def _get_groq_client():
     return _groq_client
 
 
+def _get_anthropic_client():
+    """Lazily construct and cache an Anthropic client for vision fallback."""
+    global _anthropic_client
+    if _anthropic_client is None:
+        import os
+        try:
+            import anthropic as ant
+            _anthropic_client = ant.Anthropic(api_key=os.getenv("LLM_API_KEY"))
+        except ImportError:
+            raise RuntimeError(
+                "anthropic package not installed. Run: pip install anthropic"
+            )
+    return _anthropic_client
+
+
 # --- Vision (image description) --------------------------------------------------
 
-async def describe_image(content: bytes, filename: str, media_type: str) -> str:
-    """Describe an image forensically. Routes to Groq or local Ollama based on .env.
+def _get_ollama_client():
+    """Lazily construct and cache an OpenAI-SDK client pointed at a local Ollama
+    server's OpenAI-compatible endpoint — this is the offline fallback used when
+    Groq is rate-limited/out of quota, so multimodal ingestion never hard-fails
+    mid-demo. Requires `ollama serve` running + the model pulled (see .env.example)."""
+    global _ollama_client
+    if _ollama_client is None:
+        import os
+        from openai import OpenAI
 
-    • Groq  (LLM_ENDPOINT contains groq.com): uses groq SDK vision model.
-    • Ollama (default): calls /api/chat with base64 image — no SDK, no API key.
+        _ollama_client = OpenAI(
+            api_key="ollama",  # unused by Ollama, but required by the SDK
+            base_url=(
+                os.getenv("OLLAMA_ENDPOINT")
+                or f"{os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434').rstrip('/')}/v1"
+            ),
+        )
+    return _ollama_client
 
-    Both run in asyncio.to_thread() so the event loop is never blocked.
-    """
+
+def _ollama_reachable() -> bool:
+    """Cheap, short-TTL-cached reachability probe for the local Ollama server.
+    Avoids paying a multi-second connect timeout on every single fallback call
+    when Ollama isn't running — but re-checks every 30s in case it comes up."""
     import os
+    import time
+    import urllib.request
+
+    now = time.monotonic()
+    if now - _ollama_reachable_cache["checked_at"] < 30:
+        return _ollama_reachable_cache["ok"]
+
+    base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+    endpoint = (os.getenv("OLLAMA_ENDPOINT") or f"{base}/v1").rstrip("/")
+    candidates = [f"{endpoint}/models", f"{base}/api/tags"]
+
+    _ollama_reachable_cache["ok"] = False
+    for url in candidates:
+        try:
+            with urllib.request.urlopen(url, timeout=1.5):
+                _ollama_reachable_cache["ok"] = True
+                break
+        except Exception:
+            continue
+    _ollama_reachable_cache["checked_at"] = now
+    return _ollama_reachable_cache["ok"]
+
+
+def _note_fallback(reason: str) -> None:
+    """Record that we just fell back to a local model, so /health can surface
+    it in the UI (stats ribbon / status) instead of it being a silent swap."""
+    import datetime
+
+    FALLBACK_STATE["active"] = True
+    FALLBACK_STATE["last_reason"] = reason
+    FALLBACK_STATE["last_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+    print(f"[fallback] Groq unavailable ({reason}) — switched to local model for this request")
+
+
+async def describe_image(content: bytes, filename: str, media_type: str) -> str:
+    """Describe an image forensically. Prefer Groq when configured, but preserve
+    Samuel's local-Ollama path and Jeshlin's Groq→local fallback tracking."""
     b64 = base64.standard_b64encode(content).decode()
-    prompt = _VISION_PROMPT.format(filename=filename)
+    prompt_text = _VISION_PROMPT.format(filename=filename)
+    groq_error = None
 
     if _using_groq():
-        vision_model = os.getenv("VISION_MODEL", "llava-v1.5-7b-4096-preview")
-        client = _get_groq_client()
+        try:
+            return await _describe_image_groq(b64, media_type, prompt_text)
+        except Exception as e:
+            groq_error = e
+            _note_fallback(f"vision: {e}")
 
-        def _call_groq():
-            resp = client.chat.completions.create(
-                model=vision_model,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url",
-                         "image_url": {"url": f"data:{media_type};base64,{b64}"}},
-                        {"type": "text", "text": prompt},
-                    ],
-                }],
-                max_tokens=1024,
-            )
-            return resp.choices[0].message.content
+    local = await _describe_image_local(b64, media_type, prompt_text)
+    if local is not None:
+        return local
 
-        return await asyncio.to_thread(_call_groq)
+    try:
+        return await _describe_image_claude(b64, media_type, prompt_text)
+    except Exception as e:
+        if groq_error is not None:
+            return f"[Vision unavailable — Groq failed ({groq_error}) and local/Claude fallback failed ({e})]"
+        return f"[Vision unavailable — local Ollama/Claude fallback failed ({e})]"
 
-    else:
-        # Local Ollama (default)
-        import json
-        import urllib.request
-        vision_model = os.getenv("VISION_MODEL", "llava:7b")
-        ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        payload = json.dumps({
-            "model": vision_model,
-            "messages": [{"role": "user", "content": prompt, "images": [b64]}],
-            "stream": False,
-        }).encode()
 
-        def _call_ollama():
-            req = urllib.request.Request(
-                f"{ollama_base}/api/chat",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                data = json.loads(resp.read())
-            return data["message"]["content"]
+async def _describe_image_groq(b64: str, media_type: str, prompt_text: str) -> str:
+    import os
 
+    client = _get_groq_client()
+    model = os.getenv("LLM_VISION_MODEL") or os.getenv("VISION_MODEL", "llava-v1.5-7b-4096-preview")
+
+    def _call():
+        return client.chat.completions.create(
+            model=model,
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {
+                        "url": f"data:{media_type};base64,{b64}"
+                    }},
+                    {"type": "text", "text": prompt_text},
+                ],
+            }],
+        )
+
+    resp = await asyncio.to_thread(_call)
+    return resp.choices[0].message.content
+
+
+async def _describe_image_local(b64: str, media_type: str, prompt_text: str) -> str | None:
+    """Offline vision fallback via a local Ollama model. Returns None if Ollama
+    isn't reachable or the local call fails, so callers can try another fallback."""
+    import json
+    import os
+    import urllib.request
+
+    if not _ollama_reachable():
+        return None
+
+    vision_model = os.getenv("OLLAMA_VISION_MODEL") or os.getenv("VISION_MODEL", "llava:7b")
+    ollama_base = (os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434").rstrip("/")
+    endpoint = (os.getenv("OLLAMA_ENDPOINT") or f"{ollama_base}/v1").rstrip("/")
+    chat_base = endpoint[:-3] if endpoint.endswith("/v1") else endpoint
+    chat_url = f"{chat_base.rstrip('/')}/api/chat"
+    payload = json.dumps({
+        "model": vision_model,
+        "messages": [{"role": "user", "content": prompt_text, "images": [b64]}],
+        "stream": False,
+    }).encode()
+
+    def _call_ollama():
+        req = urllib.request.Request(
+            chat_url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read())
+        return data["message"]["content"]
+
+    try:
         return await asyncio.to_thread(_call_ollama)
+    except Exception:
+        return None
+
+
+async def _describe_image_claude(b64: str, media_type: str, prompt_text: str) -> str:
+    client = _get_anthropic_client()
+
+    def _call():
+        return client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64",
+                                                  "media_type": media_type,
+                                                  "data": b64}},
+                    {"type": "text", "text": prompt_text}
+                ]
+            }]
+        )
+
+    msg = await asyncio.to_thread(_call)
+    return msg.content[0].text
 
 
 # --- Audio transcription ---------------------------------------------------------
@@ -170,33 +302,43 @@ def _get_whisper_model():
 
 
 async def transcribe_audio(content: bytes, filename: str) -> str:
-    """Transcribe audio. Routes to Groq Whisper API or local Whisper tiny model.
+    """Transcribe audio with Groq when configured, automatically falling back to
+    Samuel's local Whisper path if Groq fails or isn't configured."""
+    if _using_groq():
+        try:
+            return await _transcribe_audio_groq(content, filename)
+        except Exception as e:
+            _note_fallback(f"audio: {e}")
+            return await _transcribe_audio_local(content, filename)
 
-    • Groq: uses whisper-large-v3 via Groq SDK — fast, no local model download.
-    • Ollama / local (default): uses openai-whisper tiny model locally.
-    """
+    return await _transcribe_audio_local(content, filename)
+
+
+async def _transcribe_audio_groq(content: bytes, filename: str) -> str:
     import os
+
+    client = _get_groq_client()
+    model = os.getenv("LLM_TRANSCRIPTION_MODEL", "whisper-large-v3")
     suffix = Path(filename).suffix or ".mp3"
 
-    if _using_groq():
-        client = _get_groq_client()
-        model = os.getenv("LLM_TRANSCRIPTION_MODEL", "whisper-large-v3")
+    def _call():
+        return client.audio.transcriptions.create(
+            model=model,
+            file=(f"audio{suffix}", content),
+        )
 
-        def _call_groq():
-            return client.audio.transcriptions.create(
-                model=model,
-                file=(f"audio{suffix}", content),
-            )
+    resp = await asyncio.to_thread(_call)
+    return (resp.text or "").strip()
 
-        resp = await asyncio.to_thread(_call_groq)
-        return (resp.text or "").strip()
 
-    # Local Whisper fallback
+async def _transcribe_audio_local(content: bytes, filename: str) -> str:
+    import os
     import tempfile
     try:
         import whisper  # noqa: F401
     except ImportError:
         return "[Audio transcription unavailable: pip install openai-whisper]"
+    suffix = Path(filename).suffix or ".mp3"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
         f.write(content)
         tmp_path = f.name
@@ -319,6 +461,12 @@ HERO = ROOT / "data" / "hero_case"
 DATASET = "coldcases"
 UPLOADED_NODES: list[dict] = []
 PENDING_INGESTIONS: dict[str, dict] = {}
+
+# --- Case label: either a manual override (set via POST /case-name) or an
+# LLM-auto-generated short label derived from the ingested evidence itself,
+# regenerated only when the evidence set actually changes (cheap to poll). ---
+CASE_LABEL_OVERRIDE: str | None = None
+_case_label_cache: dict = {"label": None, "upload_count": -1}
 
 # --- try to go LIVE; fall back to DEGRADED cleanly ---------------------------
 LIVE = False
@@ -898,8 +1046,70 @@ async def case_whatif(case_id: str, req: WhatIfReq):
 @app.get("/health")
 def health():
     cases = case_store.list_cases()
-    return {"ok": True, "mode": "live" if LIVE else "degraded", "case_count": len(cases),
-            "case_database": case_store.DB_PATH.name}
+    return {
+        "ok": True,
+        "mode": "live" if LIVE else "degraded",
+        "case_count": len(cases),
+        "case_database": case_store.DB_PATH.name,
+        "fallback": FALLBACK_STATE,
+    }
+
+
+async def _get_case_label() -> str:
+    """Resolve the case label shown in the stats ribbon: a manual override (set via
+    POST /case-name) always wins; otherwise, once there's real ingested evidence, ask
+    the LLM for a short label derived from it."""
+    if CASE_LABEL_OVERRIDE:
+        return CASE_LABEL_OVERRIDE
+
+    if not UPLOADED_NODES:
+        return "Daniel Marsh · Millbrook / Riverside"
+
+    if _case_label_cache["upload_count"] == len(UPLOADED_NODES) and _case_label_cache["label"]:
+        return _case_label_cache["label"]
+
+    if LIVE:
+        try:
+            res = await mem.recall(
+                "In 6 words or fewer, give a short case label in the exact format "
+                "'PrimaryName · LocationA / LocationB' (or just 'PrimaryName' if there's "
+                "only one location) based on the suspect/victim and place names in this "
+                "evidence. Return ONLY the label, nothing else — no punctuation-free "
+                "explanation, no quotes.",
+                mode=mem.RecallMode.GRAPH,
+                dataset=DATASET,
+            )
+            label = res.answer.strip().strip('"').split("\n")[0][:80]
+            if label and res.raw is not None:
+                _case_label_cache["label"] = label
+                _case_label_cache["upload_count"] = len(UPLOADED_NODES)
+                return label
+        except Exception:
+            pass
+
+    return f"Untitled Case — {len(UPLOADED_NODES)} file(s) ingested"
+
+
+@app.get("/case-name")
+async def get_case_name():
+    return {"label": await _get_case_label(), "manual": CASE_LABEL_OVERRIDE is not None}
+
+
+class CaseNameBody(BaseModel):
+    label: str | None = None
+
+
+@app.post("/case-name")
+async def set_case_name(body: CaseNameBody):
+    global CASE_LABEL_OVERRIDE
+    CASE_LABEL_OVERRIDE = (body.label or "").strip() or None
+    return {"label": await _get_case_label(), "manual": CASE_LABEL_OVERRIDE is not None}
+
+
+@functools.lru_cache(maxsize=1)
+def hero_case_doc_count() -> int:
+    """Real file count of the pre-loaded hero-case corpus (data/hero_case/*)."""
+    return sum(1 for _ in HERO.glob("*") if _.is_file())
 
 
 @app.get("/stats")
@@ -911,11 +1121,12 @@ def stats():
     jurisdictions = {n["id"] for n in nodes if n.get("type") == "jurisdiction"}
     return {
         "nodes": len(nodes),
-        "docs": len(known_doc_ids()) + len(UPLOADED_NODES),
+        "docs": hero_case_doc_count() + len(UPLOADED_NODES),
         "jurisdictions": len(jurisdictions),
         "alibi_break": bool(graph_payload.get("contradictions")),
         "mode": "live" if LIVE else "degraded",
     }
+
 
 
 @app.get("/graph")
@@ -928,6 +1139,8 @@ async def graph():
     payload = mock("graph.json")
     payload["nodes"].extend(UPLOADED_NODES)
     payload["mode"] = "degraded"
+    payload["docs_ingested"] = hero_case_doc_count() + len(UPLOADED_NODES)
+    payload["case_label"] = await _get_case_label()
     if LIVE:
         try:
             res = await mem.recall(

@@ -56,6 +56,8 @@ export const api = {
   caseTimeline: (caseId) => get(`/cases/${caseId}/timeline`),
   caseInterrogation: (caseId, suspect_id) => post(`/cases/${caseId}/interrogation`, { suspect_id, focus_case: caseId }),
   caseWhatIf: (caseId, hypothesis) => post(`/cases/${caseId}/whatif`, { hypothesis, inject_edge: {} }),
+  caseName: () => get("/case-name"),
+  setCaseName: (label) => post("/case-name", { label }),
   graphTemporal: (time) => get(`/graph/temporal${time ? `?time=${encodeURIComponent(time)}` : ""}`),
   timeline: () => get("/timeline"),
   contradictions: () => get("/contradictions"),
