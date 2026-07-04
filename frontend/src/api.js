@@ -39,6 +39,11 @@ export const api = {
     fd.append("file", file);
     return fetch(`${BASE}/ingest-file`, { method: "POST", body: fd }).then((r) => r.json());
   },
+  transcribe: (blob, filename = "recording.webm") => {
+    const fd = new FormData();
+    fd.append("file", blob, filename);
+    return fetch(`${BASE}/transcribe`, { method: "POST", body: fd }).then((r) => r.json());
+  },
   chat: (message, history) => post("/chat", { message, history }),
   report: () => get("/report"),
   suspectTimeline: (suspect = "daniel-marsh") => get(`/suspect-timeline?suspect=${encodeURIComponent(suspect)}`),
