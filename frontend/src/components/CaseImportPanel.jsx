@@ -23,6 +23,12 @@ export default function CaseImportPanel({ caseId, onGraphUpdated, onNext }) {
     } catch (e) { setError(e.message); }
   }
   useEffect(() => { refresh(); const timer = setInterval(refresh, 1500); return () => clearInterval(timer); }, [caseId]);
+  useEffect(() => {
+    const events = new EventSource(api.caseEventsUrl(caseId));
+    events.addEventListener("jobs", () => refresh());
+    events.onerror = () => { /* polling above remains active during reconnects */ };
+    return () => events.close();
+  }, [caseId]);
   const latestJobs = useMemo(() => Object.fromEntries(data.jobs.map((job) => [job.evidence_id, job]).reverse()), [data.jobs]);
 
   async function upload() {

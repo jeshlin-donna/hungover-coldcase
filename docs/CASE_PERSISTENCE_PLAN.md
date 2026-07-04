@@ -276,7 +276,7 @@ reversible; delete is visually and operationally separate.
 2. 🔄 Durable IDs, startup recovery, retry, and cancel are active; leases/heartbeat remain.
 3. Refactor extractors to emit page/frame/stage checkpoints.
 4. Queue confirmation/cognification and serialize writes per case.
-5. 🔄 Server-rehydrated import queue and polling are active; SSE remains.
+5. ✅ Server-rehydrated import queue uses SSE with polling fallback.
 
 ### Phase 3 — case-scope every feature
 

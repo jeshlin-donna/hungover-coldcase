@@ -58,8 +58,10 @@ const SUB_TABS = [
   },
 ];
 
-const NAV_TABS = SUB_TABS;
-const GUIDE_TABS = [MAIN_TABS[0], ...SUB_TABS, CHAT_TAB];
+// New case workspaces expose only tools that are truly case-scoped. The remaining
+// fixed demo panels stay out of navigation until their v2 endpoints are migrated.
+const NAV_TABS = SUB_TABS.filter((tab) => tab.id === "graph");
+const GUIDE_TABS = [MAIN_TABS[0], ...NAV_TABS, CHAT_TAB];
 
 const GUIDE_SEEN_KEY = "coldcache_guide_seen";
 
@@ -245,7 +247,7 @@ export default function App() {
         <div className="stats-ribbon">
          <span className="stat-item">
           <span className="stat-key" style={{color:"var(--muted)"}}>ACTIVE CASE:</span>
-          <span className="stat-val" style={{color:"var(--text)"}}>Daniel Marsh · Millbrook / Riverside</span>
+          <span className="stat-val" style={{color:"var(--text)"}}>{activeCase.title}</span>
         </span>
         <span className="stat-item">
           <span className="stat-dot" style={{background:"var(--accent)"}}/>
@@ -259,14 +261,7 @@ export default function App() {
           <span className="stat-key">docs ingested</span>
         </span>
         <span className="stat-sep">·</span>
-        <span className="stat-sep">·</span>
-        
-        <span className="stat-item alibi-break">
-          <span className="stat-key" style={{color:"var(--muted)"}}> STATUS:</span>
-          <span style={{color:"var(--danger)"}}>⚠</span>
-          <span className="stat-key" style={{color:"var(--danger)"}}>alibi break detected</span>
-        </span>
-        <span className="stat-sep stat-sep-right">·</span>
+        <span className="stat-item"><span className="stat-val">{stats.jurisdictions}</span><span className="stat-key">jurisdictions</span></span>
        
       </div>
       )}

@@ -7,10 +7,10 @@ FastAPI → React UI**, then walks every app feature (tab) and what it calls und
 > Scope note: this describes the code as written in this repo. Where the app can run
 > without a live LLM key ("DEGRADED mode"), that fallback is called out explicitly.
 
-> Planned architecture: durable case workspaces, resumable ingestion jobs, per-case Cognee
-> datasets, and migration away from browser/process-memory state are specified in
-> [`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md). This is not implemented yet;
-> the current-state sections below remain authoritative until that migration lands.
+> V2 migration: durable case workspaces, resumable ingestion jobs, per-case Cognee datasets,
+> reload-safe REST/SSE state, and a blank case home are now implemented alongside the legacy
+> demo routes. Remaining tool/lifecycle migration is tracked in
+> [`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md).
 
 ---
 

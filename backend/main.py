@@ -23,6 +23,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from backend import case_store
 
@@ -595,6 +596,26 @@ async def case_cancel_evidence(case_id: str, evidence_id: str):
 @app.get("/cases/{case_id}/jobs")
 async def case_jobs(case_id: str):
     return {"jobs": await asyncio.to_thread(case_store.list_jobs, case_id)}
+
+
+@app.get("/cases/{case_id}/events")
+async def case_events(case_id: str):
+    """Reload-friendly live job stream; REST polling remains the lossless fallback."""
+    async def stream():
+        previous = None
+        heartbeat = 0
+        while True:
+            jobs = await asyncio.to_thread(case_store.list_jobs, case_id)
+            snapshot = json.dumps(jobs, sort_keys=True)
+            if snapshot != previous:
+                previous = snapshot
+                yield f"event: jobs\ndata: {json.dumps({'jobs': jobs})}\n\n"
+            else:
+                heartbeat += 1
+                if heartbeat % 15 == 0: yield ": keepalive\n\n"
+            await asyncio.sleep(1)
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/cases/{case_id}/stats")

@@ -11,6 +11,21 @@ Base URL: `http://localhost:8000`. All responses JSON. CORS open in dev.
 > [`CASE_PERSISTENCE_PLAN.md`](CASE_PERSISTENCE_PLAN.md). V2 resolves Cognee datasets from
 > `case_id`; clients will not submit arbitrary dataset names.
 
+## V2 durable case APIs (implemented)
+
+- `POST /cases`, `GET /cases`, `GET/PATCH /cases/{case_id}` — durable case lifecycle.
+- `POST /cases/{case_id}/evidence` — persist a multipart batch and queue analysis; returns `202`.
+- `GET /cases/{case_id}/evidence` — complete reload snapshot of evidence and jobs.
+- `POST /cases/{case_id}/evidence/{evidence_id}/confirm` — save review revision and queue ingestion.
+- `POST /cases/{case_id}/evidence/{evidence_id}/retry|cancel` — durable recovery controls.
+- `GET /cases/{case_id}/jobs` — polling/reconciliation snapshot.
+- `GET /cases/{case_id}/events` — SSE `jobs` events with keepalives; polling is the fallback.
+- `GET /cases/{case_id}/stats|graph|chat/suggestions` and `POST /cases/{case_id}/chat` — isolated case tools.
+
+Evidence and job state is stored in application SQLite; original files are stored beneath the
+case ID. Analysis jobs recover to `queued` after an interrupted backend process. Cognee dataset
+names are immutable UUID-derived values held by the server.
+
 ---
 
 ### `GET /graph`

@@ -10,9 +10,9 @@
 
 Built for the **WeMakeDevs × Cognee Hackathon** · *Best Use of Open Source (self-hosted Cognee)* track.
 
-> **Planned persistence milestone:** ColdCache will move to durable case workspaces with a blank
-> case home, resumable backend ingestion jobs, reload-safe progress, and one Cognee dataset per
-> case. See [`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md).
+> **Persistent case workspaces:** the app now opens on a blank case home. Case files, reviews,
+> background jobs, progress, and per-case Cognee dataset mappings persist across reloads and
+> backend restarts. See [`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md).
 
 ---
 
