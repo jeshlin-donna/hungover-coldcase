@@ -23,7 +23,7 @@ Base URL: `http://localhost:8000`. All responses JSON. CORS open in dev.
 - `GET /cases/{case_id}/jobs` — polling/reconciliation snapshot.
 - `GET /cases/{case_id}/events` — replayable SSE events (`Last-Event-ID`/`after`) with polling fallback.
 - `GET /cases/{case_id}/stats|graph|chat/suggestions` and `POST /cases/{case_id}/chat` — isolated case tools.
-- `POST /cases/{case_id}/reindex` — rebuild the case's Cognee dataset from confirmed evidence records and invalidate the derived graph cache.
+- `POST /cases/{case_id}/reindex` — build a replacement Cognee dataset from confirmed evidence records, atomically activate it only after success, and invalidate the derived graph cache.
 - `POST /cases/{case_id}/archive|restore` and `DELETE /cases/{case_id}` — lifecycle controls.
 - Case-scoped `timeline`, `contradictions`, `report`, `hunch`, `resolve`, `interrogation`, and `whatif` routes.
 

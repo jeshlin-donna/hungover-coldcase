@@ -93,6 +93,13 @@ class CasePersistenceTests(unittest.TestCase):
         self.assertIn("REVIEW_STATUS: investigator_confirmed", packet)
         self.assertIn("Do not infer guilt", packet)
 
+    def test_reindex_dataset_switch_is_atomic(self):
+        original = self.case["dataset_name"]
+        updated = case_store.activate_reindexed_dataset(self.case["id"], "replacement_dataset")
+        self.assertEqual("replacement_dataset", updated["dataset_name"])
+        self.assertEqual(self.case["graph_revision"] + 1, updated["graph_revision"])
+        self.assertNotEqual(original, updated["dataset_name"])
+
 
 if __name__ == "__main__":
     unittest.main()

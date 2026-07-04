@@ -19,6 +19,7 @@ import hashlib
 import json
 import re
 import secrets
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -794,13 +795,20 @@ async def case_reindex(case_id: str):
     if any(job["status"] in ("queued", "running") for job in jobs): raise HTTPException(409, "Wait for active jobs before rebuilding.")
     evidence = [item for item in await asyncio.to_thread(case_store.list_evidence, case_id)
                 if item["status"] == "ingested" and item["reviewed_text"]]
+    # Build beside the active dataset and switch only after cognify succeeds. This
+    # avoids Cognee 1.2.2's delete-then-add pipeline_status race and means a failed
+    # rebuild can never strand a case without its previous graph.
+    replacement = f"{case['dataset_name'].split('_r')[0]}_r{case['graph_revision'] + 1}_{uuid.uuid4().hex[:8]}"
     try:
-        await mem.expunge(dataset=case["dataset_name"])
         if evidence:
             await mem.remember_many([case_analysis.knowledge_packet(case, item) for item in evidence],
-                                    dataset=case["dataset_name"], data_per_batch=1, chunk_size=1200)
+                                    dataset=replacement, data_per_batch=1, chunk_size=1200)
     except Exception as e: raise HTTPException(502, f"Cognee rebuild failed: {e}")
-    updated = await asyncio.to_thread(case_store.bump_graph_revision, case_id)
+    updated = await asyncio.to_thread(case_store.activate_reindexed_dataset, case_id, replacement)
+    try:
+        await mem.expunge(dataset=case["dataset_name"])
+    except Exception:
+        pass  # replacement is already active; stale-dataset cleanup is non-critical
     analysis, _ = await _get_case_analysis(case_id)
     return {"ok": True, "graph_revision": updated["graph_revision"],
             "evidence_count": len(evidence), "nodes": len(analysis["nodes"]), "edges": len(analysis["edges"])}

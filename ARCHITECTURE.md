@@ -157,6 +157,10 @@ before ingestion. `case_analysis.knowledge_packet()` then wraps that content wit
 `CASE_ID`, `EVIDENCE_ID`, filename, modality, optional context, and a provenance rule before
 `memory_service.remember()` is called. Thus every modality becomes confirmed, attributable text
 before Cognee; Cognee never sees raw bytes or an unconfirmed model description.
+
+Case reindexing is copy-on-write: a new revision-named Cognee dataset is fully cognified first,
+then the case's dataset pointer and graph revision change in one SQLite transaction. A provider
+failure leaves the active dataset untouched; stale-dataset cleanup happens only after activation.
 Each extractor degrades gracefully (returns an explanatory string) if its optional
 dependency (`whisper`, `opencv-python-headless`, `pymupdf`, `pandas`) isn't installed, or
 if `LIVE` is false.

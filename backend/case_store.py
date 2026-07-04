@@ -368,6 +368,20 @@ def bump_graph_revision(case_id: str) -> dict:
     return get_case(case_id)
 
 
+def activate_reindexed_dataset(case_id: str, dataset_name: str) -> dict:
+    """Atomically point a case at a fully-built replacement Cognee dataset."""
+    stamp = now()
+    with connect() as con:
+        con.execute("BEGIN IMMEDIATE")
+        changed = con.execute(
+            "UPDATE cases SET dataset_name=?,graph_revision=graph_revision+1,updated_at=?,last_activity_at=? WHERE id=?",
+            (dataset_name, stamp, stamp, case_id),
+        ).rowcount
+        if not changed: raise KeyError("Case not found")
+        con.execute("DELETE FROM case_analyses WHERE case_id=?", (case_id,))
+    return get_case(case_id)
+
+
 def delete_evidence(case_id: str, evidence_id: str, allow_ingested: bool = False) -> bool:
     with connect() as con:
         row = con.execute("SELECT * FROM evidence_items WHERE id=? AND case_id=?", (evidence_id, case_id)).fetchone()
