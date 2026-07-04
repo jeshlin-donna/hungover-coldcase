@@ -1,0 +1,4 @@
+time,event,confidence
+23:45,Vehicle sighted near scene,0.8
+00:10,Entry forced,0.95
+00:35,Vehicle departs northbound,0.7

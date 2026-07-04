@@ -62,79 +62,142 @@ _VISION_PROMPT = (
     "relevant to a criminal investigation. Be specific and factual."
 )
 
+# --- Provider detection ----------------------------------------------------------
+
+def _using_groq() -> bool:
+    """True when the configured LLM endpoint is Groq (api.groq.com)."""
+    import os
+    endpoint = os.getenv("LLM_ENDPOINT", "")
+    return "groq.com" in endpoint
+
+
+_groq_client = None
+
+def _get_groq_client():
+    """Lazily construct and cache a Groq SDK client."""
+    global _groq_client
+    if _groq_client is None:
+        import os
+        try:
+            from groq import Groq
+            _groq_client = Groq(api_key=os.getenv("LLM_API_KEY"))
+        except ImportError:
+            raise RuntimeError(
+                "groq package not installed. Run: pip install groq"
+            )
+    return _groq_client
+
+
+# --- Vision (image description) --------------------------------------------------
 
 async def describe_image(content: bytes, filename: str, media_type: str) -> str:
-    """Describe an image using the local Ollama vision model (llava:7b by default).
+    """Describe an image forensically. Routes to Groq or local Ollama based on .env.
 
-    Calls Ollama's /api/chat multimodal endpoint with a base64-encoded image.
-    Runs in a thread so the async event loop is never blocked.
-    No API key or cloud dependency — fully local and offline.
+    • Groq  (LLM_ENDPOINT contains groq.com): uses groq SDK vision model.
+    • Ollama (default): calls /api/chat with base64 image — no SDK, no API key.
+
+    Both run in asyncio.to_thread() so the event loop is never blocked.
     """
     import os
-    import json
-    import urllib.request
-
     b64 = base64.standard_b64encode(content).decode()
-    vision_model = os.getenv("VISION_MODEL", "llava:7b")
-    ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     prompt = _VISION_PROMPT.format(filename=filename)
 
-    payload = json.dumps({
-        "model": vision_model,
-        "messages": [{
-            "role": "user",
-            "content": prompt,
-            "images": [b64],
-        }],
-        "stream": False,
-    }).encode()
+    if _using_groq():
+        vision_model = os.getenv("VISION_MODEL", "llava-v1.5-7b-4096-preview")
+        client = _get_groq_client()
 
-    def _call():
-        req = urllib.request.Request(
-            f"{ollama_base}/api/chat",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read())
-        return data["message"]["content"]
+        def _call_groq():
+            resp = client.chat.completions.create(
+                model=vision_model,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url",
+                         "image_url": {"url": f"data:{media_type};base64,{b64}"}},
+                        {"type": "text", "text": prompt},
+                    ],
+                }],
+                max_tokens=1024,
+            )
+            return resp.choices[0].message.content
 
-    return await asyncio.to_thread(_call)
+        return await asyncio.to_thread(_call_groq)
 
+    else:
+        # Local Ollama (default)
+        import json
+        import urllib.request
+        vision_model = os.getenv("VISION_MODEL", "llava:7b")
+        ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        payload = json.dumps({
+            "model": vision_model,
+            "messages": [{"role": "user", "content": prompt, "images": [b64]}],
+            "stream": False,
+        }).encode()
+
+        def _call_ollama():
+            req = urllib.request.Request(
+                f"{ollama_base}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                data = json.loads(resp.read())
+            return data["message"]["content"]
+
+        return await asyncio.to_thread(_call_ollama)
+
+
+# --- Audio transcription ---------------------------------------------------------
 
 _whisper_model = None
 
 
 def _get_whisper_model():
-    """Lazily load and cache the Whisper model — loading weights from disk on every
-    request (the previous behavior) added seconds of latency to every audio upload."""
+    """Lazily load and cache the local Whisper model."""
     global _whisper_model
     if _whisper_model is None:
         import whisper
-
         _whisper_model = whisper.load_model("tiny")
     return _whisper_model
 
 
 async def transcribe_audio(content: bytes, filename: str) -> str:
-    """Transcribe audio to text using local Whisper tiny model."""
-    import tempfile, os
+    """Transcribe audio. Routes to Groq Whisper API or local Whisper tiny model.
+
+    • Groq: uses whisper-large-v3 via Groq SDK — fast, no local model download.
+    • Ollama / local (default): uses openai-whisper tiny model locally.
+    """
+    import os
+    suffix = Path(filename).suffix or ".mp3"
+
+    if _using_groq():
+        client = _get_groq_client()
+        model = os.getenv("LLM_TRANSCRIPTION_MODEL", "whisper-large-v3")
+
+        def _call_groq():
+            return client.audio.transcriptions.create(
+                model=model,
+                file=(f"audio{suffix}", content),
+            )
+
+        resp = await asyncio.to_thread(_call_groq)
+        return (resp.text or "").strip()
+
+    # Local Whisper fallback
+    import tempfile
     try:
-        import whisper  # noqa: F401  (import check only; loading is cached separately)
+        import whisper  # noqa: F401
     except ImportError:
         return "[Audio transcription unavailable: pip install openai-whisper]"
-    suffix = Path(filename).suffix or ".mp3"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
         f.write(content)
         tmp_path = f.name
     try:
         def _transcribe():
-            # Whisper's load + transcribe are both CPU-bound and blocking; run them
-            # in a worker thread so the event loop stays free for other requests.
             model = _get_whisper_model()
             result = model.transcribe(tmp_path)
             return result.get("text", "").strip()
-
         return await asyncio.to_thread(_transcribe)
     finally:
         os.unlink(tmp_path)
