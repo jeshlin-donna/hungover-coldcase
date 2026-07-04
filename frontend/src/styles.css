@@ -2027,15 +2027,13 @@ footer {
   line-height: 1.6;
 }
 
-.upload-next-row,
-.upload-debug-row {
+.upload-next-row {
   margin-top: 18px;
   display: flex;
   justify-content: flex-end;
 }
 
-.next-btn,
-.debug-test-btn {
+.next-btn {
   background: linear-gradient(135deg, #1a3a1e 0%, #0f2613 100%);
   color: var(--win);
   border: 1px solid var(--win);
@@ -2047,20 +2045,8 @@ footer {
   transition: background 0.2s;
 }
 
-.next-btn:hover,
-.debug-test-btn:hover {
+.next-btn:hover {
   background: rgba(63,185,80,0.18);
-}
-
-.debug-test-btn {
-  margin-top: 10px;
-  background: transparent;
-  color: var(--text-2);
-  border-color: var(--line);
-}
-
-.debug-test-btn:hover {
-  background: var(--line-soft);
 }
 
 /* ── Image preview / vision ── */

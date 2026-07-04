@@ -491,13 +491,6 @@ export default function UploadPanel({ onGraphUpdated, onNext }) {
         </div>
       )}
 
-      {onNext && (
-        <div className="upload-debug-row">
-          <button className="debug-test-btn" onClick={onNext}>
-            Next → (testmode)
-          </button>
-        </div>
-      )}
     </div>
   );
 }
