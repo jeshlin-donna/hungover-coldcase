@@ -97,6 +97,16 @@ export default function App() {
     api.health().then((h) => setMode(h.mode)).catch(() => setMode("offline"));
   }, []);
 
+  // Keep the stats-ribbon node count synced whenever graphData changes for any reason
+  // (initial GraphPanel load, temporal filter refresh, post-ingest refresh, etc.) — it
+  // used to only track the post-ingest path, so opening the Evidence Board cold never
+  // moved the ribbon off its hardcoded initial value.
+  useEffect(() => {
+    if (graphData?.nodes?.length) {
+      setStats((prev) => ({ ...prev, nodes: graphData.nodes.length }));
+    }
+  }, [graphData]);
+
   useEffect(() => {
     function onKey(e) {
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
@@ -158,9 +168,11 @@ export default function App() {
       const prevCount = graphData?.nodes?.length || 0;
       const newCount = g?.nodes?.length || 0;
       setGraphData(g);
+      setStats((prev) => ({ ...prev, nodes: newCount || prev.nodes, docs: prev.docs + 1 }));
       const delta = newCount - prevCount;
       showToast(`Graph updated${delta > 0 ? ` — ${delta} new node${delta !== 1 ? "s" : ""} ingested` : " — graph refreshed"}`);
     }).catch(() => {
+      setStats((prev) => ({ ...prev, docs: prev.docs + 1 }));
       showToast("Graph refreshed after ingest");
     });
   }
