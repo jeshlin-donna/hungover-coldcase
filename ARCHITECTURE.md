@@ -17,6 +17,11 @@ continuous expired-lease recovery, state-guarded retries/confirmation, and appen
 job events. Uploads are streamed into bounded temporary files and atomically moved into case
 storage after hashing and duplicate checks.
 
+Case tools read a persisted analysis keyed by `case_id + graph_revision`. It extracts typed
+people, evidence, locations, vehicles, provenance edges, and timeline events from confirmed text.
+Cognee recall remains the preferred reasoning path; this analysis supplies the Evidence Board
+and a source-grounded fallback for Chat, Interrogation, What-If, reports, and suggestions.
+
 ---
 
 ## 1. High-level system map

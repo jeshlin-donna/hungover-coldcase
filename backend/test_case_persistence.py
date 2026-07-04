@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from backend import case_store
+from backend import case_analysis
 
 
 class CasePersistenceTests(unittest.TestCase):
@@ -64,6 +65,25 @@ class CasePersistenceTests(unittest.TestCase):
         item = self.analyzed()
         with self.assertRaises(KeyError):
             case_store.queue_ingestion(other["id"], item["id"], "wrong case", "")
+
+    def test_case_analysis_connects_people_evidence_and_timeline(self):
+        texts = [
+            "Location: 788 Riverside Ave\nSuspect: Daniel Marsh\nKey evidence: Tool-mark cast, Fiber sample",
+            "time event confidence\n23:45 Vehicle sighted near scene 0.80\n00:10 Entry forced 0.95",
+        ]
+        for index, text in enumerate(texts):
+            item, job = case_store.save_evidence(self.case["id"], f"{index}.txt", text.encode(), "text/plain", "text", "")
+            case_store.finish_analysis(job, text)
+            ingest = case_store.queue_ingestion(self.case["id"], item["id"], text, "")
+            case_store.finish_ingestion(ingest)
+        current = case_store.get_case(self.case["id"])
+        analysis = case_analysis.build(current, case_store.list_evidence(self.case["id"]))
+        self.assertTrue(any(node["type"] == "person" for node in analysis["nodes"]))
+        self.assertTrue(any(node["type"] == "evidence" for node in analysis["nodes"]))
+        self.assertGreater(len(analysis["edges"]), 2)
+        self.assertEqual(2, len(analysis["timeline"]))
+        case_store.save_analysis(current["id"], current["graph_revision"], analysis)
+        self.assertIsNotNone(case_store.get_analysis(current["id"], current["graph_revision"]))
 
 
 if __name__ == "__main__":

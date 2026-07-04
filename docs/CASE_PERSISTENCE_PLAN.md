@@ -285,6 +285,13 @@ reversible; delete is visually and operationally separate.
 3. 🔄 Graph revisions are active; derived response caching remains optional.
 4. ✅ All workspace tools use case-scoped routes and case-specific UI; deprecated routes remain only for explicit demo compatibility.
 
+### Phase 3 result — derived case intelligence
+
+Each graph revision now produces a persisted, source-grounded application analysis containing
+people, locations, vehicles, evidence entities, document provenance edges, person-to-evidence
+associations, and dated/timed events. Cognee graph recall enriches chat and tools when available;
+the persisted analysis provides useful deterministic behavior when the LLM provider is offline.
+
 ### Phase 4 — lifecycle hardening
 
 1. ✅ Archive/restore and guarded case/evidence deletion are implemented.

@@ -27,6 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from backend import case_store
+from backend import case_analysis
 
 IMAGE_TYPES = {
     "image/jpeg": "image/jpeg",
@@ -728,24 +729,30 @@ async def case_stats(case_id: str):
     if not case: raise HTTPException(404, "Case not found.")
     evidence = await asyncio.to_thread(case_store.list_evidence, case_id)
     jobs = await asyncio.to_thread(case_store.list_jobs, case_id)
-    return {"nodes": sum(1 for item in evidence if item["status"] == "ingested"),
+    analysis, _ = await _get_case_analysis(case_id)
+    return {"nodes": len(analysis["nodes"]),
             "docs": sum(1 for item in evidence if item["status"] == "ingested"),
             "jurisdictions": 1 if case.get("jurisdiction") else 0,
             "active_jobs": sum(1 for job in jobs if job["status"] in ("queued", "running")),
             "graph_revision": case["graph_revision"], "mode": "live" if LIVE else "degraded"}
 
 
-@app.get("/cases/{case_id}/graph")
-async def case_graph(case_id: str):
+async def _get_case_analysis(case_id: str):
     from fastapi import HTTPException
     case = await asyncio.to_thread(case_store.get_case, case_id)
     if not case: raise HTTPException(404, "Case not found.")
+    cached = await asyncio.to_thread(case_store.get_analysis, case_id, case["graph_revision"])
+    if cached: return cached, case
     evidence = await asyncio.to_thread(case_store.list_evidence, case_id)
-    nodes = [{"id": f"evidence:{item['id']}", "label": item["original_filename"],
-              "type": "evidence", "modality": item["modality"]}
-             for item in evidence if item["status"] == "ingested"]
-    return {"nodes": nodes, "edges": [], "contradictions": [],
-            "graph_revision": case["graph_revision"], "mode": "live" if LIVE else "degraded"}
+    payload = await asyncio.to_thread(case_analysis.build, case, evidence)
+    await asyncio.to_thread(case_store.save_analysis, case_id, case["graph_revision"], payload)
+    return payload, case
+
+
+@app.get("/cases/{case_id}/graph")
+async def case_graph(case_id: str):
+    analysis, case = await _get_case_analysis(case_id)
+    return {**analysis, "contradictions": [], "mode": "live" if LIVE else "derived"}
 
 
 @app.post("/cases/{case_id}/chat")
@@ -753,12 +760,16 @@ async def case_chat(case_id: str, req: ChatReq):
     from fastapi import HTTPException
     case = await asyncio.to_thread(case_store.get_case, case_id)
     if not case: raise HTTPException(404, "Case not found.")
+    analysis, _ = await _get_case_analysis(case_id)
     if not LIVE:
-        return {"answer": "The case knowledge service is in degraded mode. Your evidence remains saved, but an LLM is required for answers.", "sources": [], "mode": "degraded"}
+        return {"answer": case_analysis.answer(analysis, req.message), "sources": [], "mode": "derived"}
     history = "\n".join(f"{x.get('role','user')}: {x.get('text','')}" for x in req.history[-8:])
     query = f"Conversation context (not evidence):\n{history}\n\nLatest question: {req.message}" if history else req.message
-    res = await mem.recall(query, mode=mem.RecallMode.GRAPH, dataset=case["dataset_name"])
-    return {"answer": res.answer, "sources": [], "mode": "live"}
+    try:
+        res = await mem.recall(query, mode=mem.RecallMode.GRAPH, dataset=case["dataset_name"])
+        return {"answer": res.answer, "sources": [], "mode": "live"}
+    except Exception as e:
+        return {"answer": case_analysis.answer(analysis, req.message), "sources": [], "mode": "derived", "warning": str(e)}
 
 
 @app.get("/cases/{case_id}/chat/suggestions")
@@ -766,13 +777,15 @@ async def case_chat_suggestions(case_id: str):
     from fastapi import HTTPException
     case = await asyncio.to_thread(case_store.get_case, case_id)
     if not case: raise HTTPException(404, "Case not found.")
-    fallback = ["What facts are established in this case?", "Which evidence needs corroboration?", "What should be investigated next?"]
-    if not LIVE or case["graph_revision"] == 0: return {"suggestions": fallback, "mode": "degraded"}
+    analysis, _ = await _get_case_analysis(case_id)
+    people = [n["label"] for n in analysis["nodes"] if n["type"] == "person"]
+    fallback = [f"What evidence is connected to {people[0]}?" if people else "What facts are established in this case?", "What does the timeline show?", "Which evidence needs corroboration?"]
+    if not LIVE or case["graph_revision"] == 0: return {"suggestions": fallback, "mode": "derived"}
     try:
         res = await mem.recall("Return exactly three concise investigative questions, one per line.", mode=mem.RecallMode.GRAPH, dataset=case["dataset_name"])
         lines = [re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip() for line in res.answer.splitlines()]
         return {"suggestions": [line for line in lines if line.endswith("?")][:3] or fallback, "mode": "live"}
-    except Exception as e: return {"suggestions": fallback, "mode": "degraded", "error": str(e)}
+    except Exception as e: return {"suggestions": fallback, "mode": "derived", "warning": str(e)}
 
 
 async def _case_recall(case_id: str, query: str):
@@ -780,27 +793,28 @@ async def _case_recall(case_id: str, query: str):
     case = await asyncio.to_thread(case_store.get_case, case_id)
     if not case: raise HTTPException(404, "Case not found.")
     if not LIVE: return None, case
-    return await mem.recall(query, mode=mem.RecallMode.GRAPH, dataset=case["dataset_name"]), case
+    try: return await mem.recall(query, mode=mem.RecallMode.GRAPH, dataset=case["dataset_name"]), case
+    except Exception: return None, case
 
 
 @app.get("/cases/{case_id}/timeline")
 async def case_timeline(case_id: str):
-    from fastapi import HTTPException
-    if not await asyncio.to_thread(case_store.get_case, case_id): raise HTTPException(404, "Case not found.")
-    evidence = await asyncio.to_thread(case_store.list_evidence, case_id)
-    return {"events": [{"date": item["created_at"], "title": item["original_filename"], "summary": item["status"], "evidence_id": item["id"]} for item in reversed(evidence)]}
+    analysis, _ = await _get_case_analysis(case_id)
+    return {"events": analysis["timeline"], "summary": analysis["summary"]}
 
 
 @app.get("/cases/{case_id}/contradictions")
 async def case_contradictions(case_id: str):
+    analysis, _ = await _get_case_analysis(case_id)
     res, _ = await _case_recall(case_id, "Identify only evidence-backed contradictions in this case.")
-    return {"contradictions": [], "narrative": res.answer if res else None, "mode": "live" if res else "degraded"}
+    return {"contradictions": [], "narrative": res.answer if res else f"No deterministic contradiction can be established automatically. {analysis['summary']}", "mode": "live" if res else "derived"}
 
 
 @app.get("/cases/{case_id}/report")
 async def case_report(case_id: str):
+    analysis, _ = await _get_case_analysis(case_id)
     res, case = await _case_recall(case_id, "Create a concise case summary with established facts, contradictions, gaps, and next steps.")
-    return {"title": f"Case Summary — {case['title']}", "sections": [{"heading": "Knowledge graph summary", "content": res.answer if res else "LLM unavailable; evidence remains saved."}], "mode": "live" if res else "degraded"}
+    return {"title": f"Case Summary — {case['title']}", "sections": [{"heading": "Knowledge graph summary", "content": res.answer if res else analysis["summary"]}], "mode": "live" if res else "derived"}
 
 
 @app.post("/cases/{case_id}/hunch")
@@ -823,14 +837,18 @@ async def case_resolve(case_id: str, req: ResolveReq):
 
 @app.post("/cases/{case_id}/interrogation")
 async def case_interrogation(case_id: str, req: InterrogationReq):
+    analysis, _ = await _get_case_analysis(case_id)
     res, _ = await _case_recall(case_id, f"Suggest evidence-grounded interview questions about {req.suspect_id}. Do not assume guilt.")
-    return {"narrative": res.answer if res else "LLM unavailable.", "mode": "live" if res else "degraded"}
+    facts = case_analysis.answer(analysis, "What is the key evidence?")
+    return {"narrative": res.answer if res else f"Start with open questions about {req.suspect_id}, then test the account against verified records. {facts}", "mode": "live" if res else "derived"}
 
 
 @app.post("/cases/{case_id}/whatif")
 async def case_whatif(case_id: str, req: WhatIfReq):
+    analysis, _ = await _get_case_analysis(case_id)
     res, _ = await _case_recall(case_id, f"Evaluate this hypothesis without modifying evidence: {req.hypothesis}")
-    return {"hypothesis": req.hypothesis, "narrative": res.answer if res else "LLM unavailable.", "mode": "live" if res else "degraded"}
+    fallback = f"Hypothesis recorded but not added to verified evidence. Baseline: {analysis['summary']} Review the connected source documents before changing confidence in any claim."
+    return {"hypothesis": req.hypothesis, "narrative": res.answer if res else fallback, "mode": "live" if res else "derived"}
 
 
 @app.get("/health")

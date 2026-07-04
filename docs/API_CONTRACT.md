@@ -32,6 +32,11 @@ names are immutable UUID-derived values held by the server.
 Uploads stream through bounded temporary storage (25 MB/file, 50 files and 250 MB/batch by
 default). SHA-256 duplicates within a case are reported and skipped instead of reprocessed.
 
+`GET /cases/{case_id}/graph` returns analyzed entity and document nodes plus provenance and
+association edges, cached by graph revision. `timeline`, `chat`, `interrogation`, and `whatif`
+consume the same case analysis. When Cognee recall fails, responses use `mode: "derived"` rather
+than returning demo content or failing silently.
+
 ---
 
 ### `GET /graph`

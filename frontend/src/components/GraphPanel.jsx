@@ -12,6 +12,9 @@ const NODE_COLORS = {
   alibi: "#ff9f1c",
   receipt: "#2ec4b6",
   evidence: "#d2a8ff",
+  person: "#f85149",
+  location: "#8b949e",
+  document: "#79c0ff",
 };
 
 const TYPE_LABELS = {
@@ -24,6 +27,9 @@ const TYPE_LABELS = {
   alibi: "Alibi claim",
   receipt: "Card record",
   evidence: "Uploaded evidence",
+  person: "Person",
+  location: "Location",
+  document: "Source document",
 };
 
 // A distinct glyph per node type so the graph reads at a glance even for
@@ -39,12 +45,16 @@ const NODE_ICONS = {
   alibi: "🗣",
   receipt: "🧾",
   evidence: "📎",
+  person: "👤",
+  location: "📍",
+  document: "📄",
 };
 
 // Base radius per type — suspects and cases are the anchors of the story,
 // so they read as visually "heavier" than supporting evidence nodes.
 const NODE_BASE_SIZE = {
   suspect: 9,
+  person: 9,
   case: 7.5,
   jurisdiction: 7,
 };
@@ -255,20 +265,19 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
     <div className="panel">
       <div className="row" style={{ marginBottom: 10 }}>
         <p style={{ margin: 0, color: "var(--muted)", fontSize: 14, maxWidth: 560 }}>
-          The case web. Tool signature, vehicle, and MO bridge two jurisdictions that
-          never shared a database. <span className="muted">Hover a node to trace its
+          {caseId ? "People, evidence, vehicles, locations, and source documents extracted from this case." : "The case web. Tool signature, vehicle, and MO bridge two jurisdictions that never shared a database."} <span className="muted">Hover a node to trace its
           connections · click for details · click a legend item to hide a node type.</span>
         </p>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-          <button
+          {!caseId && <button
             className={reveal ? "active" : ""}
             onClick={() => { setReveal((v) => !v); setSelectedNode(null); }}
           >
             {reveal ? "Hide alibi check" : "Run alibi check"}
-          </button>
-          <button className="danger" onClick={handleExpunge} disabled={expunging}>
+          </button>}
+          {!caseId && <button className="danger" onClick={handleExpunge} disabled={expunging}>
             {expunging ? "Expunging…" : "Expunge Riverside (forget())"}
-          </button>
+          </button>}
           <button
             title="Re-center and fit the whole graph in view"
             onClick={() => fgRef.current?.zoomToFit(400, 60)}

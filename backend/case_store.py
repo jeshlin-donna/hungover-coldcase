@@ -14,13 +14,19 @@ DB_PATH = ROOT / "data" / "coldcache.db"
 CASE_FILES = ROOT / "data" / "cases"
 
 
+class ClosingConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc, tb):
+        try: return super().__exit__(exc_type, exc, tb)
+        finally: self.close()
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(DB_PATH, timeout=30)
+    con = sqlite3.connect(DB_PATH, timeout=30, factory=ClosingConnection)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA foreign_keys=ON")
@@ -71,6 +77,10 @@ def init_db() -> None:
         );
         CREATE TABLE IF NOT EXISTS schema_migrations (
           version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS case_analyses (
+          case_id TEXT PRIMARY KEY REFERENCES cases(id) ON DELETE CASCADE,
+          graph_revision INTEGER NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL
         );
         """)
         columns = {row[1] for row in con.execute("PRAGMA table_info(jobs)")}
@@ -336,6 +346,18 @@ def list_events(case_id: str, after_id: int = 0) -> list[dict]:
     with connect() as con:
         rows = con.execute("SELECT * FROM job_events WHERE case_id=? AND id>? ORDER BY id LIMIT 200", (case_id, after_id)).fetchall()
     return [{**dict(r), "payload": json.loads(r["payload"])} for r in rows]
+
+
+def get_analysis(case_id: str, graph_revision: int) -> dict | None:
+    with connect() as con:
+        row = con.execute("SELECT payload FROM case_analyses WHERE case_id=? AND graph_revision=?", (case_id, graph_revision)).fetchone()
+    return json.loads(row["payload"]) if row else None
+
+
+def save_analysis(case_id: str, graph_revision: int, payload: dict) -> None:
+    with connect() as con:
+        con.execute("INSERT INTO case_analyses(case_id,graph_revision,payload,updated_at) VALUES (?,?,?,?) ON CONFLICT(case_id) DO UPDATE SET graph_revision=excluded.graph_revision,payload=excluded.payload,updated_at=excluded.updated_at",
+                    (case_id, graph_revision, json.dumps(payload), now()))
 
 
 def delete_evidence(case_id: str, evidence_id: str, allow_ingested: bool = False) -> bool:
