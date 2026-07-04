@@ -575,7 +575,7 @@ footer {
 
 .legend {
   display: flex;
-  gap: 14px;
+  gap: 8px;
   flex-wrap: wrap;
   color: var(--muted);
   font-size: 12px;
@@ -589,13 +589,36 @@ footer {
   margin-right: 5px;
   vertical-align: middle;
 }
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+}
+.legend-toggle {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+}
+.legend-toggle:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.25);
+}
+.legend-toggle.legend-off {
+  opacity: 0.35;
+  text-decoration: line-through;
+}
 
 /* Node detail side panel */
 .node-detail {
   position: absolute;
   top: 10px;
   right: 10px;
-  width: 220px;
+  width: 250px;
+  max-height: calc(100% - 20px);
+  overflow-y: auto;
   background: rgba(22,27,34,0.96);
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -628,6 +651,43 @@ footer {
   line-height: 1;
   margin: -4px -4px 0 0;
 }
+.nd-connections {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.nd-connections-title {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 6px;
+}
+.nd-connections ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.nd-connection-link {
+  width: 100%;
+  text-align: left;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.nd-connection-link:hover:not(:disabled) {
+  background: rgba(88,166,255,0.12);
+  border-color: rgba(88,166,255,0.35);
+}
+.nd-connection-link:disabled { cursor: default; opacity: 0.6; }
+.nd-connection-rel {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+}
+.nd-connection-label { font-size: 12px; }
 
 /* ── Compare grid ── */
 .compare-grid {
