@@ -51,11 +51,25 @@ def build(case: dict, evidence_items: list[dict]) -> dict:
                 found.append(person); people.append(person)
                 edge(person, case_node, "person_of_interest_in" if "suspect" in role else "involved_in", source,
                      "reported" if "suspect" in role else "verified")
-        for label in re.findall(r"\b(?:Daniel Marsh|Unknown Associate #\d+)\b", text, re.I):
-            person = _add_node(nodes, "person", label.title() if "unknown" not in label.lower() else label, source)
+        # Inline role phrases and structured spreadsheet rows cover arbitrary
+        # cases; no demo-person allowlist is used.
+        inline_people = re.findall(
+            r"\b((?i:suspect|witness|victim|examiner|officer|associate|accomplice))\s*:?[ \t]+"
+            r"([A-Z][A-Za-z'-]+(?:[ \t]+[A-Z0-9][A-Za-z0-9#'-]*){1,3})",
+            text,
+        )
+        table_people = re.findall(
+            r"(?im)^\s*(.+?)[ \t]+(primary suspect|possible accomplice)\b",
+            text,
+        )
+        for role, label in inline_people + [(role, label) for label, role in table_people]:
+            label = label.strip()
+            if not (2 <= len(label) <= 80): continue
+            normalized_role = "suspect" if "suspect" in role.lower() else role.lower()
+            person = _add_node(nodes, "person", label, source, role=normalized_role)
             found.append(person); people.append(person)
-            if "unknown associate" in nodes[person]["label"].lower():
-                edge(person, case_node, "involved_in", source, "reported")
+            edge(person, case_node, "person_of_interest_in" if normalized_role == "suspect" else "involved_in",
+                 source, "reported")
 
         for match in re.finditer(r"(?im)^location\s*:\s*([^\n]+)", text):
             location = _add_node(nodes, "location", match.group(1).strip(), source)

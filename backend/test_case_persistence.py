@@ -101,6 +101,16 @@ class CasePersistenceTests(unittest.TestCase):
         self.assertEqual(self.case["graph_revision"] + 1, updated["graph_revision"])
         self.assertNotEqual(original, updated["dataset_name"])
 
+    def test_person_extraction_is_not_demo_name_specific(self):
+        text = "Suspect: Avery Quinn\nExaminer: Morgan Lee\nWitness Priya Shah observed the scene."
+        item, job = case_store.save_evidence(self.case["id"], "people.txt", text.encode(), "text/plain", "text", "")
+        case_store.finish_analysis(job, text)
+        ingest = case_store.queue_ingestion(self.case["id"], item["id"], text, "")
+        case_store.finish_ingestion(ingest)
+        analysis = case_analysis.build(case_store.get_case(self.case["id"]), case_store.list_evidence(self.case["id"]))
+        names = {node["label"] for node in analysis["nodes"] if node["type"] == "person"}
+        self.assertTrue({"Avery Quinn", "Morgan Lee", "Priya Shah"}.issubset(names))
+
 
 if __name__ == "__main__":
     unittest.main()
