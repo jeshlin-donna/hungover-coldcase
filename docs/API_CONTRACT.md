@@ -13,12 +13,18 @@ The case web for the force-graph view.
 ```json
 {
   "nodes": [{"id": "tool:pry-8mm", "label": "Pry bar (8mm, left nick)", "type": "tool"}],
-  "edges": [{"source": "case:MH-0312", "target": "tool:pry-8mm", "relation": "tool_used"}]
+  "edges": [{"source": "case:MH-0312", "target": "tool:pry-8mm", "relation": "tool_used"}],
+  "mode": "live"
 }
 ```
 `type` ∈ `case | tool | vehicle | mo | suspect | jurisdiction | alibi | receipt | evidence`.
 Frontend colors by `type`. After a successful `POST /ingest-file`, the graph also includes
-a session evidence node whose `id` matches the upload response's `graph_node_id`.
+a session evidence node whose `id` matches the upload response's `graph_node_id`. The curated
+graph/edges are always returned as-is (the reliable demo visual — never blocked by a live
+call failing). In LIVE mode the response additionally carries a `cognee_insight` string from
+a real Cognee `TRIPLET_COMPLETION` ("insights") query over the same case data, plus
+`"mode": "live"`; if that live call errors, `mode` stays `"degraded"` and a
+`cognee_insight_error` field is included instead — the curated graph itself is unaffected.
 
 ### `GET /timeline`
 ```json
@@ -49,8 +55,15 @@ actually linked (drives the "only graph connected both jurisdictions" highlight)
 ### `POST /resolve`  `{ "session_ids": ["case-001"] }`
 Runs `improve()`. Returns the **before/after** so the UI can animate the metric climbing.
 ```json
-{"ok": true, "metric": "recall@3 on multi-hop", "before": 0.42, "after": 0.71}
+{"ok": true, "metric": "recall@3 on multi-hop", "before": 0.42, "after": 0.71, "mode": "degraded"}
 ```
+In LIVE mode, `before`/`after` are real recall@3 scores measured by running a fixed
+multi-hop probe query (alibi vs. physical evidence) through `recall(mode=GRAPH)` immediately
+before and after the real `improve()` call — the same measurement method as
+`benchmark/benchmark_improve.py`'s q17 case — and `mode` is `"live"`. `improve()` always
+runs regardless of whether the probe measurement succeeds; if either probe call fails, the
+static demo numbers are returned instead with `"mode": "improve-ok-metric-degraded"` to make
+clear the resolution itself still completed.
 
 ### `POST /expunge`  `{ "dataset": "case:RV-0788" }`
 Runs `forget()`. Returns which nodes vanished + the post-deletion graph (unrelated nodes
