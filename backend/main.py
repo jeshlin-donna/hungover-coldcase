@@ -12,7 +12,9 @@ Run (on a machine with deps):  uvicorn backend.main:app --reload --port 8000
 """
 from __future__ import annotations
 
+import asyncio
 import base64
+import functools
 import json
 import re
 from pathlib import Path
@@ -50,40 +52,74 @@ def _media_type_for(filename: str) -> str | None:
             ".png": "image/png", ".gif": "image/gif",
             ".webp": "image/webp"}.get(ext)
 
+_anthropic_client = None
+
+
+def _get_anthropic_client():
+    """Lazily construct and cache the Anthropic client (avoids reconnecting per-request)."""
+    global _anthropic_client
+    if _anthropic_client is None:
+        import os
+        import anthropic as ant
+
+        _anthropic_client = ant.Anthropic(api_key=os.getenv("LLM_API_KEY"))
+    return _anthropic_client
+
+
 async def describe_image(content: bytes, filename: str, media_type: str) -> str:
     """Send image to Claude vision and get a forensic description for Cognee ingestion."""
-    import os, anthropic as ant
-    client = ant.Anthropic(api_key=os.getenv("LLM_API_KEY"))
+    client = _get_anthropic_client()
     b64 = base64.standard_b64encode(content).decode()
-    msg = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=1024,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image", "source": {"type": "base64",
-                                              "media_type": media_type,
-                                              "data": b64}},
-                {"type": "text", "text": (
-                    f"You are analyzing evidence for a cold case investigation. "
-                    f"Image filename: {filename}\n\n"
-                    "Describe this image in forensic detail. Note: any visible people "
-                    "(physical description, clothing, distinguishing features), vehicles "
-                    "(make, model, color, license plates), locations or addresses, objects "
-                    "of interest, any visible text or timestamps, and anything potentially "
-                    "relevant to a criminal investigation. Be specific and factual."
-                )}
-            ]
-        }]
-    )
+
+    def _call():
+        # anthropic's SDK is synchronous/blocking; run it off the event loop thread
+        # so a slow vision call doesn't stall every other concurrent request
+        # (health checks, /recall, other uploads, ...).
+        return client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64",
+                                                  "media_type": media_type,
+                                                  "data": b64}},
+                    {"type": "text", "text": (
+                        f"You are analyzing evidence for a cold case investigation. "
+                        f"Image filename: {filename}\n\n"
+                        "Describe this image in forensic detail. Note: any visible people "
+                        "(physical description, clothing, distinguishing features), vehicles "
+                        "(make, model, color, license plates), locations or addresses, objects "
+                        "of interest, any visible text or timestamps, and anything potentially "
+                        "relevant to a criminal investigation. Be specific and factual."
+                    )}
+                ]
+            }]
+        )
+
+    msg = await asyncio.to_thread(_call)
     return msg.content[0].text
+
+
+_whisper_model = None
+
+
+def _get_whisper_model():
+    """Lazily load and cache the Whisper model — loading weights from disk on every
+    request (the previous behavior) added seconds of latency to every audio upload."""
+    global _whisper_model
+    if _whisper_model is None:
+        import whisper
+
+        _whisper_model = whisper.load_model("tiny")
+    return _whisper_model
 
 
 async def transcribe_audio(content: bytes, filename: str) -> str:
     """Transcribe audio to text using local Whisper tiny model."""
     import tempfile, os
     try:
-        import whisper
+        import whisper  # noqa: F401  (import check only; loading is cached separately)
     except ImportError:
         return "[Audio transcription unavailable: pip install openai-whisper]"
     suffix = Path(filename).suffix or ".mp3"
@@ -91,9 +127,14 @@ async def transcribe_audio(content: bytes, filename: str) -> str:
         f.write(content)
         tmp_path = f.name
     try:
-        model = whisper.load_model("tiny")
-        result = model.transcribe(tmp_path)
-        return result.get("text", "").strip()
+        def _transcribe():
+            # Whisper's load + transcribe are both CPU-bound and blocking; run them
+            # in a worker thread so the event loop stays free for other requests.
+            model = _get_whisper_model()
+            result = model.transcribe(tmp_path)
+            return result.get("text", "").strip()
+
+        return await asyncio.to_thread(_transcribe)
     finally:
         os.unlink(tmp_path)
 
@@ -110,23 +151,34 @@ async def extract_video_description(content: bytes, filename: str) -> str:
         f.write(content)
         tmp_path = f.name
     try:
-        cap = cv2.VideoCapture(tmp_path)
-        fps = cap.get(cv2.CAP_PROP_FPS) or 1
-        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        # 1 frame every 10 seconds, max 5 frames
-        interval = max(1, int(fps * 10))
-        frame_indices = list(range(0, total, interval))[:5]
+        def _extract_frames():
+            # OpenCV's VideoCapture/read/imencode calls are blocking; do the frame
+            # grabbing in a worker thread and only return small JPEG buffers, so
+            # the event loop isn't blocked while frames are decoded.
+            cap = cv2.VideoCapture(tmp_path)
+            try:
+                fps = cap.get(cv2.CAP_PROP_FPS) or 1
+                total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                # 1 frame every 10 seconds, max 5 frames
+                interval = max(1, int(fps * 10))
+                frame_indices = list(range(0, total, interval))[:5]
+                frames = []
+                for idx in frame_indices:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                    ret, frame = cap.read()
+                    if not ret:
+                        continue
+                    _, buf = cv2.imencode(".jpg", frame)
+                    frames.append((idx / fps, buf.tobytes()))
+                return frames
+            finally:
+                cap.release()
+
+        frames = await asyncio.to_thread(_extract_frames)
         descriptions = []
-        for idx in frame_indices:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ret, frame = cap.read()
-            if not ret:
-                continue
-            _, buf = cv2.imencode(".jpg", frame)
-            ts = idx / fps
-            desc = await describe_image(buf.tobytes(), f"frame_{idx}.jpg", "image/jpeg")
+        for ts, jpeg_bytes in frames:
+            desc = await describe_image(jpeg_bytes, f"frame_{ts:.1f}s.jpg", "image/jpeg")
             descriptions.append(f"[{ts:.1f}s into video] {desc}")
-        cap.release()
         return "\n\n".join(descriptions) if descriptions else "[No frames extracted]"
     finally:
         os.unlink(tmp_path)
@@ -138,17 +190,29 @@ async def extract_pdf_content(content: bytes, filename: str) -> str:
         import fitz  # pymupdf
     except ImportError:
         return "[PDF extraction unavailable: pip install pymupdf]"
-    doc = fitz.open(stream=content, filetype="pdf")
+
+    def _extract_pages():
+        # PyMuPDF text/pixmap extraction is CPU-bound and blocking; do it in a
+        # worker thread. Scanned pages come back as JPEG bytes for async vision
+        # description instead of being described inline (which would block here).
+        doc = fitz.open(stream=content, filetype="pdf")
+        pages = []
+        for page_num, page in enumerate(doc):
+            text = page.get_text().strip()
+            if text:
+                pages.append(("text", page_num, text))
+            else:
+                pix = page.get_pixmap(dpi=150)
+                pages.append(("image", page_num, pix.tobytes("jpeg")))
+        return pages
+
+    pages = await asyncio.to_thread(_extract_pages)
     texts = []
-    for page_num, page in enumerate(doc):
-        text = page.get_text().strip()
-        if text:
-            texts.append(f"[Page {page_num + 1}]\n{text}")
+    for kind, page_num, payload in pages:
+        if kind == "text":
+            texts.append(f"[Page {page_num + 1}]\n{payload}")
         else:
-            # Scanned page — render to image and use Claude vision
-            pix = page.get_pixmap(dpi=150)
-            img_bytes = pix.tobytes("jpeg")
-            desc = await describe_image(img_bytes, f"{filename}_page{page_num+1}.jpg", "image/jpeg")
+            desc = await describe_image(payload, f"{filename}_page{page_num + 1}.jpg", "image/jpeg")
             texts.append(f"[Page {page_num + 1} — scanned image]\n{desc}")
     return "\n\n".join(texts)
 
@@ -205,11 +269,23 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
                    allow_headers=["*"])
 
 
+@functools.lru_cache(maxsize=32)
+def _read_mock_file(name: str) -> str:
+    # Cache the raw file text (not the parsed dict!) so repeated /graph, /timeline,
+    # etc. calls skip disk I/O, while mock() below still hands each caller a fresh
+    # dict — some callers (e.g. /graph) mutate the returned object in place.
+    return (MOCK / name).read_text()
+
+
 def mock(name: str) -> dict:
-    return json.loads((MOCK / name).read_text())
+    return json.loads(_read_mock_file(name))
 
 
+@functools.lru_cache(maxsize=1)
 def known_doc_ids() -> list[str]:
+    # The hero-case corpus is static demo data bundled with the repo, so the
+    # DOC_ID glob+regex scan only needs to run once per process instead of on
+    # every /recall, /recall/compare, and /chat call.
     ids = []
     for p in HERO.glob("*.md"):
         m = re.search(r"DOC_ID:\s*([A-Z0-9\-]+)", p.read_text())
@@ -221,6 +297,22 @@ def known_doc_ids() -> list[str]:
 def extract_ids(text: str, ids: list[str]) -> list[str]:
     pos = [(text.find(i), i) for i in ids if text.find(i) >= 0]
     return [i for _, i in sorted(pos)]
+
+
+# Fixed multi-hop probe used to measure a real recall@3 delta around improve()
+# in /resolve (mirrors benchmark/benchmark_improve.py's q17 alibi-vs-evidence query,
+# so the number quoted in the demo is measured the same way as the benchmark).
+RESOLVE_PROBE_QUERY = (
+    "Does Daniel Marsh's alibi for the night of the Riverside burglary hold up "
+    "against the other evidence?"
+)
+RESOLVE_PROBE_GOLD = ["MARSH-ALIBI", "MARSH-RECEIPT"]
+
+
+def _recall_at_3(ranked: list[str], gold: list[str]) -> float:
+    if not gold:
+        return 0.0
+    return len(set(ranked[:3]) & set(gold)) / len(set(gold))
 
 
 # --- request models ----------------------------------------------------------
@@ -262,23 +354,39 @@ def health():
 
 
 @app.get("/graph")
-def graph():
-    # TODO(live): derive from Cognee TRIPLET_COMPLETION (this version has no INSIGHTS).
-    # The curated graph is faithful to the hero case and is the reliable demo visual.
+async def graph():
+    # The curated graph stays the base response (risk register: "Live demo crashes" ->
+    # degraded mode must never fail) — it's faithful to the hero case and the reliable
+    # demo visual. In LIVE mode we additionally attach a real Cognee TRIPLET_COMPLETION
+    # ("insights") narrative over the same case data on top of it, so /graph actually
+    # exercises the 3rd recall mode instead of only ever serving static curation.
     payload = mock("graph.json")
     payload["nodes"].extend(UPLOADED_NODES)
+    payload["mode"] = "degraded"
+    if LIVE:
+        try:
+            res = await mem.recall(
+                "Describe the key relationships connecting the suspect, tool, vehicle, "
+                "MO, and cases in this investigation",
+                mode=mem.RecallMode.INSIGHTS,
+                dataset=DATASET,
+            )
+            payload["cognee_insight"] = res.answer
+            payload["mode"] = "live"
+        except Exception as e:
+            payload["cognee_insight_error"] = str(e)
     return payload
 
 
 @app.get("/graph/temporal")
-def graph_temporal(time: str = None):
+async def graph_temporal(time: str = None):
     """Time-windowed graph view for the Evidence Board's temporal slider.
 
     Returns only nodes dated at or before `time` (nodes without a `date`
     field, e.g. jurisdictions, are treated as always-visible context anchors)
     plus edges whose endpoints are both currently visible.
     """
-    full = graph()
+    full = await graph()
     if not time:
         return full
     nodes = full.get("nodes", [])
@@ -295,6 +403,7 @@ def graph_temporal(time: str = None):
         "edges": filtered_edges,
         "contradictions": full.get("contradictions", []),
         "time": time,
+        "mode": full.get("mode", "degraded"),
     }
 
 
@@ -378,10 +487,43 @@ async def hunch(req: HunchReq):
 
 @app.post("/resolve")
 async def resolve(req: ResolveReq):
-    if LIVE:
-        await mem.resolve_case(session_ids=req.session_ids, dataset=DATASET)
-        # TODO(live): capture a real before/after metric around this call.
-    return {"ok": True, "metric": "recall@3 on multi-hop", "before": 0.42, "after": 0.71}
+    if not LIVE:
+        return {"ok": True, "metric": "recall@3 on multi-hop", "before": 0.42, "after": 0.71,
+                "mode": "degraded"}
+
+    ids = known_doc_ids()
+
+    # Best-effort instrumentation around the real improve() call — measurement
+    # failures must never block resolve_case() itself from running.
+    before_score = None
+    try:
+        before_res = await mem.recall(RESOLVE_PROBE_QUERY, mode=mem.RecallMode.GRAPH, dataset=DATASET)
+        before_score = _recall_at_3(extract_ids(str(before_res.raw), ids), RESOLVE_PROBE_GOLD)
+    except Exception as e:
+        print(f"[resolve] before-probe failed: {type(e).__name__}: {e}")
+
+    await mem.resolve_case(session_ids=req.session_ids, dataset=DATASET)
+
+    after_score = None
+    try:
+        after_res = await mem.recall(RESOLVE_PROBE_QUERY, mode=mem.RecallMode.GRAPH, dataset=DATASET)
+        after_score = _recall_at_3(extract_ids(str(after_res.raw), ids), RESOLVE_PROBE_GOLD)
+    except Exception as e:
+        print(f"[resolve] after-probe failed: {type(e).__name__}: {e}")
+
+    if before_score is None or after_score is None:
+        # Real improve() ran; only the probe measurement is degraded, so say so
+        # rather than silently returning the same static numbers as full-mock mode.
+        return {"ok": True, "metric": "recall@3 on multi-hop", "before": 0.42, "after": 0.71,
+                "mode": "improve-ok-metric-degraded"}
+
+    return {
+        "ok": True,
+        "metric": "recall@3 on multi-hop (probe: alibi vs evidence)",
+        "before": round(before_score, 3),
+        "after": round(after_score, 3),
+        "mode": "live",
+    }
 
 
 @app.post("/expunge")
@@ -740,7 +882,7 @@ async def ingest_file(file: UploadFile = File(...)):
             description = "Mock mode: PDF received. Live mode extracts text (or uses vision for scanned pages)."
 
     elif modality == "spreadsheet":
-        description = parse_spreadsheet(content, fname)
+        description = await asyncio.to_thread(parse_spreadsheet, content, fname)
         extracted_text = description
 
     else:

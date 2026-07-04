@@ -26,17 +26,29 @@ const TYPE_LABELS = {
   evidence: "Uploaded evidence",
 };
 
-const TYPE_ICONS = {
-  case: "🗂️",
-  tool: "🛠️",
+// A distinct glyph per node type so the graph reads at a glance even for
+// colorblind users, and so similarly-hued nodes (e.g. alibi/receipt) don't
+// get confused with each other.
+const NODE_ICONS = {
+  case: "📁",
+  tool: "🔧",
   vehicle: "🚗",
-  mo: "🧭",
+  mo: "🕒",
   suspect: "👤",
-  jurisdiction: "🏛️",
-  alibi: "🗣️",
-  receipt: "💳",
+  jurisdiction: "🏛",
+  alibi: "🗣",
+  receipt: "🧾",
   evidence: "📎",
 };
+
+// Base radius per type — suspects and cases are the anchors of the story,
+// so they read as visually "heavier" than supporting evidence nodes.
+const NODE_BASE_SIZE = {
+  suspect: 9,
+  case: 7.5,
+  jurisdiction: 7,
+};
+const DEFAULT_NODE_SIZE = 5.5;
 
 // Animate node removal by filtering them out over a brief transition.
 function withoutNode(graph, nodeId) {
@@ -92,6 +104,8 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
   const [expunging, setExpunging] = useState(false);
   const [expungeNote, setExpungeNote] = useState("");
   const [selectedNode, setSelectedNode] = useState(null);
+  const [hoverNode, setHoverNode] = useState(null);
+  const [hiddenTypes, setHiddenTypes] = useState(() => new Set());
   const maxIdx = totalMonths();
   const [sliderIdx, setSliderIdx] = useState(maxIdx); // start showing everything
   const fgRef = useRef();
@@ -135,19 +149,62 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
   }, [sliderIdx, fullGraph]);
 
   const data = useMemo(() => {
-    const links = graph.edges.map((e) => ({
-      source: e.source,
-      target: e.target,
-      relation: e.relation,
-      _c: false,
-    }));
+    const visibleNodes = graph.nodes.filter((n) => !hiddenTypes.has(n.type));
+    const visibleIds = new Set(visibleNodes.map((n) => n.id));
+
+    const links = graph.edges
+      .filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target))
+      .map((e) => ({ source: e.source, target: e.target, relation: e.relation, _c: false }));
     if (reveal) {
       for (const c of graph.contradictions || []) {
-        links.push({ source: c.a, target: c.b, relation: "CONTRADICTION", _c: true });
+        if (visibleIds.has(c.a) && visibleIds.has(c.b)) {
+          links.push({ source: c.a, target: c.b, relation: "CONTRADICTION", _c: true });
+        }
       }
     }
-    return { nodes: graph.nodes.map((n) => ({ ...n })), links };
-  }, [graph, reveal]);
+
+    // Degree = how many edges touch this node — used to size + emphasize the
+    // "hub" nodes (suspect, repeat tool/vehicle/MO) that carry the story.
+    const degree = new Map();
+    for (const l of links) {
+      degree.set(l.source, (degree.get(l.source) || 0) + 1);
+      degree.set(l.target, (degree.get(l.target) || 0) + 1);
+    }
+
+    const nodes = visibleNodes.map((n) => ({ ...n, _degree: degree.get(n.id) || 0 }));
+    return { nodes, links };
+  }, [graph, reveal, hiddenTypes]);
+
+  // Adjacency lookup for hover/select focus mode: which node ids + link refs
+  // are directly connected to a given node, so we can highlight the local
+  // "story" around it and dim everything else.
+  const neighborIndex = useMemo(() => {
+    const map = new Map();
+    for (const l of data.links) {
+      const s = typeof l.source === "object" ? l.source.id : l.source;
+      const t = typeof l.target === "object" ? l.target.id : l.target;
+      if (!map.has(s)) map.set(s, { nodes: new Set(), links: new Set() });
+      if (!map.has(t)) map.set(t, { nodes: new Set(), links: new Set() });
+      map.get(s).nodes.add(t);
+      map.get(t).nodes.add(s);
+      map.get(s).links.add(l);
+      map.get(t).links.add(l);
+    }
+    return map;
+  }, [data.links]);
+
+  const focusId = hoverNode?.id ?? selectedNode?.id ?? null;
+  const focusInfo = focusId ? neighborIndex.get(focusId) : null;
+
+  const toggleTypeVisibility = useCallback((type) => {
+    setHiddenTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+    setSelectedNode(null);
+  }, []);
 
   async function handleExpunge() {
     setExpunging(true);
@@ -174,6 +231,10 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
     setSelectedNode((prev) => (prev?.id === node.id ? null : node));
   }, []);
 
+  const handleNodeHover = useCallback((node) => {
+    setHoverNode(node || null);
+  }, []);
+
   const contradictions = graph.contradictions || [];
 
   // Fit the whole graph into view whenever the node/link set changes —
@@ -194,7 +255,8 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
       <div className="row" style={{ marginBottom: 10 }}>
         <p style={{ margin: 0, color: "var(--muted)", fontSize: 14, maxWidth: 560 }}>
           The case web. Tool signature, vehicle, and MO bridge two jurisdictions that
-          never shared a database.
+          never shared a database. <span className="muted">Hover a node to trace its
+          connections · click for details · click a legend item to hide a node type.</span>
         </p>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
           <button
@@ -205,6 +267,12 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
           </button>
           <button className="danger" onClick={handleExpunge} disabled={expunging}>
             {expunging ? "Expunging…" : "Expunge Riverside (forget())"}
+          </button>
+          <button
+            title="Re-center and fit the whole graph in view"
+            onClick={() => fgRef.current?.zoomToFit(400, 60)}
+          >
+            ⤢ Center
           </button>
         </div>
       </div>
@@ -252,25 +320,36 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
         </p>
       )}
 
+      {fullGraph.cognee_insight && (
+        <div className="cognee-insight-box">
+          <span className="cognee-insight-label">Cognee graph insight (TRIPLET_COMPLETION)</span>
+          <p className="cognee-insight-text">{fullGraph.cognee_insight}</p>
+        </div>
+      )}
+
       <div className="graph-wrap">
         <ForceGraph2D
           ref={fgRef}
           graphData={data}
-          nodeLabel={(n) => {
-            const hoverText = n.type === "case" ? n.label || TYPE_LABELS[n.type] || "Case" : n.label || TYPE_LABELS[n.type] || n.type;
-            return `${TYPE_ICONS[n.type] || ""} ${hoverText} (${TYPE_LABELS[n.type] || n.type})`;
-          }}
-          nodeColor={(n) => NODE_COLORS[n.type] || "#aaa"}
-          nodeRelSize={7}
+          nodeLabel={(n) => `${n.label} (${TYPE_LABELS[n.type] || n.type})`}
+          nodeRelSize={5}
+          nodeVal={(n) => (NODE_BASE_SIZE[n.type] || DEFAULT_NODE_SIZE) + Math.min(n._degree || 0, 6) * 0.9}
           d3VelocityDecay={0.35}
           warmupTicks={60}
           cooldownTicks={100}
           onEngineStop={() => fgRef.current?.zoomToFit(400, 60)}
           linkLabel={(l) => l.relation}
-          linkColor={(l) => (l._c ? "#f85149" : "rgba(255,255,255,0.18)")}
-          linkWidth={(l) => (l._c ? 3 : 1)}
-          linkDirectionalParticles={(l) => (l._c ? 5 : 1)}
-          linkDirectionalParticleWidth={(l) => (l._c ? 4 : 2)}
+          linkColor={(l) => {
+            if (l._c) return "#f85149";
+            if (!focusInfo) return "rgba(255,255,255,0.18)";
+            return focusInfo.links.has(l) ? "rgba(88,166,255,0.9)" : "rgba(255,255,255,0.06)";
+          }}
+          linkWidth={(l) => {
+            if (l._c) return 3;
+            return focusInfo?.links.has(l) ? 2.5 : 1;
+          }}
+          linkDirectionalParticles={(l) => (l._c ? 5 : focusInfo?.links.has(l) ? 3 : 0)}
+          linkDirectionalParticleWidth={(l) => (l._c ? 4 : 3)}
           linkDirectionalParticleColor={(l) => (l._c ? "#f85149" : "#58a6ff")}
           linkDirectionalArrowLength={4}
           linkDirectionalArrowRelPos={1}
@@ -313,13 +392,43 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
           }}
           backgroundColor="#090d13"
           onNodeClick={handleNodeClick}
-          nodeCanvasObjectMode={() => "after"}
+          onNodeHover={handleNodeHover}
+          onBackgroundClick={() => { setSelectedNode(null); }}
+          nodeCanvasObjectMode={() => "replace"}
+          nodePointerAreaPaint={(node, color, ctx) => {
+            const r = (NODE_BASE_SIZE[node.type] || DEFAULT_NODE_SIZE) + Math.min(node._degree || 0, 6) * 0.9;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+            ctx.fill();
+          }}
           nodeCanvasObject={(node, ctx, globalScale) => {
-            // Green halo when justImproved
+            const r = (NODE_BASE_SIZE[node.type] || DEFAULT_NODE_SIZE) + Math.min(node._degree || 0, 6) * 0.9;
+            const color = NODE_COLORS[node.type] || "#aaa";
+            const isFocused = focusId === node.id;
+            const isNeighbor = focusInfo?.nodes.has(node.id);
+            const dimmed = focusId && !isFocused && !isNeighbor;
+
+            // Node circle, dimmed to translucent grey when a hover/selection
+            // focus is active and this node isn't part of that local story.
+            ctx.save();
+            ctx.globalAlpha = dimmed ? 0.22 : 1;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+            ctx.fillStyle = color;
+            ctx.fill();
+            if (isFocused) {
+              ctx.lineWidth = 2.5;
+              ctx.strokeStyle = "#ffffff";
+              ctx.stroke();
+            }
+            ctx.restore();
+
+            // Green "just improved by improve()" halo — always shown regardless of focus.
             if (justImproved) {
               ctx.save();
               ctx.beginPath();
-              ctx.arc(node.x, node.y, 10, 0, 2 * Math.PI);
+              ctx.arc(node.x, node.y, r + 3, 0, 2 * Math.PI);
               ctx.strokeStyle = "rgba(63,185,80,0.85)";
               ctx.lineWidth = 3;
               ctx.shadowColor = "#3fb950";
@@ -327,40 +436,66 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
               ctx.stroke();
               ctx.restore();
             }
-            const icon = TYPE_ICONS[node.type] || "";
-            const label = node.type === "case" ? TYPE_LABELS[node.type] || "Case" : node.label || TYPE_LABELS[node.type] || node.type;
-            const display = label.length > 18 ? label.slice(0, 18) + "…" : label;
-            if (icon) {
-              const iconSize = Math.max(16 / globalScale, 10);
-              const labelSize = Math.max(iconSize * 0.45, 7);
-              ctx.save();
-              ctx.fillStyle = "rgba(230,237,243,0.95)";
-              ctx.textAlign = "center";
 
-              ctx.font = `${iconSize}px ui-sans-serif,system-ui,sans-serif`;
-              ctx.textBaseline = "middle";
-              ctx.fillText(icon, node.x, node.y - (labelSize / 2));
+            if (dimmed) return; // skip icon/label clutter for dimmed nodes
 
-              ctx.font = `${labelSize}px ui-sans-serif,system-ui,sans-serif`;
-              ctx.textBaseline = "top";
-              ctx.fillText(display, node.x, node.y + (iconSize / 1.8));
-              ctx.restore();
-            }
+            // Type glyph centered in the node so shape/meaning reads even
+            // before the color palette is memorized.
+            const iconSize = Math.max(r * 1.1, 6);
+            ctx.save();
+            ctx.globalAlpha = dimmed ? 0.3 : 1;
+            ctx.font = `${iconSize}px "Apple Color Emoji","Segoe UI Emoji",sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(NODE_ICONS[node.type] || "•", node.x, node.y + 0.5);
+            ctx.restore();
+
+            // Label pill — only render full text once zoomed in enough or
+            // when this node is focused/hovered, so the default view stays
+            // clean and "catchy" instead of a wall of overlapping text.
+            const showLabel = isFocused || isNeighbor || globalScale > 2.2;
+            if (!showLabel) return;
+            const label = node.label || node.id;
+            const fontSize = Math.max(10 / globalScale, 3.2);
+            ctx.font = `${isFocused ? "700" : "500"} ${fontSize}px ui-sans-serif,system-ui,sans-serif`;
+            const maxLen = isFocused ? 40 : 24;
+            const display = label.length > maxLen ? label.slice(0, maxLen) + "…" : label;
+            const textW = ctx.measureText(display).width;
+            const padX = 4, padY = 2;
+            const boxY = node.y + r + 3;
+            ctx.fillStyle = "rgba(9,13,19,0.78)";
+            ctx.beginPath();
+            ctx.roundRect(node.x - textW / 2 - padX, boxY, textW + padX * 2, fontSize + padY * 2, 4);
+            ctx.fill();
+            ctx.fillStyle = isFocused ? "#ffffff" : "rgba(230,237,243,0.9)";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.fillText(display, node.x, boxY + padY);
           }}
         />
 
         {selectedNode && (
-          <NodeDetail node={selectedNode} onClose={() => setSelectedNode(null)} />
+          <NodeDetail
+            node={selectedNode}
+            edges={graph.edges}
+            nodesById={Object.fromEntries(graph.nodes.map((n) => [n.id, n]))}
+            onClose={() => setSelectedNode(null)}
+            onSelect={setSelectedNode}
+          />
         )}
       </div>
 
       <div className="legend">
         {Object.entries(NODE_COLORS).map(([k, c]) => (
-          <span key={k} className="legend-item">
+          <button
+            key={k}
+            className={`legend-item legend-toggle${hiddenTypes.has(k) ? " legend-off" : ""}`}
+            onClick={() => toggleTypeVisibility(k)}
+            title={hiddenTypes.has(k) ? `Show ${TYPE_LABELS[k] || k} nodes` : `Hide ${TYPE_LABELS[k] || k} nodes`}
+          >
             <i style={{ background: c }} />
-            <span style={{ marginRight: 6 }}>{TYPE_ICONS[k] || ""}</span>
-            {TYPE_LABELS[k] || k}
-          </span>
+            {NODE_ICONS[k]} {TYPE_LABELS[k] || k}
+          </button>
         ))}
         <span className="legend-item">
           <i style={{ background: "#f85149", width: 18, height: 3, borderRadius: 1.5, display: "inline-block", verticalAlign: "middle", marginRight: 5 }} />
@@ -371,8 +506,17 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
   );
 }
 
-function NodeDetail({ node, onClose }) {
+function NodeDetail({ node, edges, nodesById, onClose, onSelect }) {
   const color = NODE_COLORS[node.type] || "#aaa";
+  const connections = (edges || [])
+    .filter((e) => e.source === node.id || e.target === node.id)
+    .map((e) => {
+      const otherId = e.source === node.id ? e.target : e.source;
+      const other = nodesById?.[otherId];
+      const direction = e.source === node.id ? "→" : "←";
+      return { otherId, other, relation: e.relation, direction };
+    });
+
   return (
     <div className="node-detail">
       <button className="nd-close" onClick={onClose} aria-label="Close">×</button>
@@ -384,10 +528,34 @@ function NodeDetail({ node, onClose }) {
           border: `1px solid ${color}55`,
         }}
       >
-        {TYPE_ICONS[node.type] ? `${TYPE_ICONS[node.type]} ` : ""}{TYPE_LABELS[node.type] || node.type}
+        {NODE_ICONS[node.type]} {TYPE_LABELS[node.type] || node.type}
       </span>
       <h4>{node.label}</h4>
       <div className="nd-id">{node.id}</div>
+
+      {connections.length > 0 && (
+        <div className="nd-connections">
+          <div className="nd-connections-title">
+            Connected to {connections.length} {connections.length === 1 ? "node" : "nodes"}
+          </div>
+          <ul>
+            {connections.map((c, i) => (
+              <li key={i}>
+                <button
+                  className="nd-connection-link"
+                  onClick={() => c.other && onSelect?.(c.other)}
+                  disabled={!c.other}
+                >
+                  <span className="nd-connection-rel">{c.direction} {c.relation}</span>
+                  <span className="nd-connection-label">
+                    {NODE_ICONS[c.other?.type] || ""} {c.other?.label || c.otherId}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

@@ -82,12 +82,8 @@ export default function ChatPanel() {
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        const fd = new FormData();
-        fd.append("file", blob, "recording.webm");
         try {
-          const BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
-          const r = await fetch(`${BASE}/transcribe`, { method: "POST", body: fd });
-          const data = await r.json();
+          const data = await api.transcribe(blob);
           if (data.text) setInput(data.text);
         } catch {
           // Ignore transcription errors silently
