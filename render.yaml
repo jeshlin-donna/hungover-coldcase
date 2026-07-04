@@ -1,0 +1,49 @@
+runtime: python-3.11.9
+services:
+  - type: web
+    name: coldcache-backend
+    runtime: python
+    plan: free
+    branch: main
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    disk:
+      name: coldcache-data
+      mountPath: /opt/render/project/cognee_data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      # --- LLM (Groq) — set these in the Render dashboard, never commit real values ---
+      - key: LLM_PROVIDER
+        value: custom
+      - key: LLM_MODEL
+        value: groq/llama-3.3-70b-versatile
+      - key: LLM_ENDPOINT
+        value: https://api.groq.com/openai/v1
+      - key: LLM_API_KEY
+        sync: false          # set manually in Render dashboard (secret)
+      - key: LLM_INSTRUCTOR_MODE
+        value: tool_call
+      - key: COGNEE_SKIP_CONNECTION_TEST
+        value: "true"
+      - key: LLM_VISION_MODEL
+        value: meta-llama/llama-4-scout-17b-16e-instruct
+      - key: LLM_TRANSCRIPTION_MODEL
+        value: whisper-large-v3
+      # --- Local embeddings, no key needed ---
+      - key: EMBEDDING_PROVIDER
+        value: fastembed
+      - key: EMBEDDING_MODEL
+        value: sentence-transformers/all-MiniLM-L6-v2
+      - key: EMBEDDING_DIMENSIONS
+        value: "384"
+      # --- Persistent storage on Render's disk (survives restarts, unlike serverless) ---
+      - key: DATA_ROOT_DIRECTORY
+        value: /opt/render/project/cognee_data/data_storage
+      - key: SYSTEM_ROOT_DIRECTORY
+        value: /opt/render/project/cognee_data/cognee_system
+      - key: CACHE_ROOT_DIRECTORY
+        value: /opt/render/project/cognee_data/cognee_cache
