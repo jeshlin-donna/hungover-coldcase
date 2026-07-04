@@ -27,6 +27,18 @@ rebuilding the whole growing graph after every document.
 `ColdCaseNode` also normalizes a model-emitted `null` description to the empty string,
 preserving Cognee's required string field without retrying an otherwise valid extraction.
 
+### Local Gemma completion limitation (live-verified 2026-07-04)
+
+Cognee 1.2.2 ingestion/cognify succeeds against Ollama `gemma4:e4b`, including the typed
+case schema. Its high-level `GRAPH_COMPLETION`, however, currently enters Cognee's
+session-context structured-output wrapper. Gemma spends the 4K/8K completion budget reasoning
+about that wrapper and returns `finish_reason=length`, triggering exponential Instructor retries.
+This was reproduced against the successfully rebuilt Riverside revision-12 dataset. ColdCache
+therefore uses Cognee for persistent graph construction and uses a bounded direct completion over
+the persisted, provenance-bearing semantic analysis for interactive case tools. Do not route
+latency-sensitive UI requests through high-level Cognee completion until that adapter behavior is
+fixed or a model that reliably satisfies its structured wrapper is configured.
+
 ## Backend startup behavior
 `backend/main.py` loads the repository `.env` before deciding LIVE vs DEGRADED mode. The
 documented `uvicorn backend.main:app --port 8000` command therefore uses the configured

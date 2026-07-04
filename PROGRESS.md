@@ -40,6 +40,8 @@ reconnecting notice when the backend is temporarily unavailable.
 Resolved the Gemma/Cognee max-token retry loop triggered by chat suggestions. Suggestions no
 longer invoke structured recall; interactive tools use compact bounded completions and fall back
 to persisted analysis. Local Gemma verification completed in 15.1 seconds without retries.
+The same adapter limitation was live-confirmed for Cognee `GRAPH_COMPLETION`; typed cognify is
+healthy, while interactive completions intentionally remain on the bounded direct-LLM path.
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo
 
