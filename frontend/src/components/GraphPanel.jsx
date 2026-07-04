@@ -320,6 +320,13 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
         </p>
       )}
 
+      {fullGraph.cognee_insight && (
+        <div className="cognee-insight-box">
+          <span className="cognee-insight-label">Cognee graph insight (TRIPLET_COMPLETION)</span>
+          <p className="cognee-insight-text">{fullGraph.cognee_insight}</p>
+        </div>
+      )}
+
       <div className="graph-wrap">
         <ForceGraph2D
           ref={fgRef}
