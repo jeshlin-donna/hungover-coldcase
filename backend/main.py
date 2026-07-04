@@ -54,6 +54,9 @@ def _media_type_for(filename: str) -> str | None:
 
 _anthropic_client = None
 _groq_client = None
+_ollama_client = None
+_ollama_reachable_cache: dict = {"ok": False, "checked_at": 0.0}
+FALLBACK_STATE = {"active": False, "last_reason": None, "last_at": None}
 
 VISION_PROMPT = (
     "You are analyzing evidence for a cold case investigation. "
@@ -103,39 +106,142 @@ def _get_anthropic_client():
     return _anthropic_client
 
 
+def _get_ollama_client():
+    """Lazily construct and cache an OpenAI-SDK client pointed at a local Ollama
+    server's OpenAI-compatible endpoint — this is the offline fallback used when
+    Groq is rate-limited/out of quota, so multimodal ingestion never hard-fails
+    mid-demo. Requires `ollama serve` running + the model pulled (see .env.example)."""
+    global _ollama_client
+    if _ollama_client is None:
+        import os
+        from openai import OpenAI
+
+        _ollama_client = OpenAI(
+            api_key="ollama",  # unused by Ollama, but required by the SDK
+            base_url=os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/v1"),
+        )
+    return _ollama_client
+
+
+def _ollama_reachable() -> bool:
+    """Cheap, short-TTL-cached reachability probe for the local Ollama server.
+    Avoids paying a multi-second connect timeout on every single fallback call
+    when Ollama isn't running — but re-checks every 30s in case it comes up."""
+    import os
+    import time
+    import urllib.request
+
+    now = time.monotonic()
+    if now - _ollama_reachable_cache["checked_at"] < 30:
+        return _ollama_reachable_cache["ok"]
+
+    endpoint = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/v1")
+    try:
+        urllib.request.urlopen(f"{endpoint}/models", timeout=1.5)
+        _ollama_reachable_cache["ok"] = True
+    except Exception:
+        _ollama_reachable_cache["ok"] = False
+    _ollama_reachable_cache["checked_at"] = now
+    return _ollama_reachable_cache["ok"]
+
+
+def _note_fallback(reason: str) -> None:
+    """Record that we just fell back to a local model, so /health can surface
+    it in the UI (stats ribbon / status) instead of it being a silent swap."""
+    import datetime
+
+    FALLBACK_STATE["active"] = True
+    FALLBACK_STATE["last_reason"] = reason
+    FALLBACK_STATE["last_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+    print(f"[fallback] Groq unavailable ({reason}) — switched to local model for this request")
+
+
 async def describe_image(content: bytes, filename: str, media_type: str) -> str:
     """Send image to a vision LLM and get a forensic description for Cognee ingestion.
-    Routes to Groq's vision model when configured, else Claude vision."""
+    Routes to Groq's vision model when configured; if Groq errors (rate limit, quota
+    exhausted, network issue, etc.) it automatically falls back to a local Ollama vision
+    model (moondream) so ingestion never hard-fails mid-demo, then Claude as a last resort."""
     b64 = base64.standard_b64encode(content).decode()
     prompt_text = VISION_PROMPT.format(filename=filename)
 
     if _using_groq():
-        import os
+        try:
+            return await _describe_image_groq(b64, media_type, prompt_text)
+        except Exception as e:
+            _note_fallback(f"vision: {e}")
+            local = await _describe_image_local(b64, media_type, prompt_text)
+            if local is not None:
+                return local
+            try:
+                return await _describe_image_claude(b64, media_type, prompt_text)
+            except Exception:
+                return f"[Vision unavailable — Groq failed ({e}) and no local/Claude fallback succeeded]"
 
-        client = _get_groq_client()
-        model = os.getenv("LLM_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+    return await _describe_image_claude(b64, media_type, prompt_text)
 
-        def _call():
-            # Groq's SDK (OpenAI-compatible) is synchronous/blocking; run it off the
-            # event loop thread so a slow vision call doesn't stall every other
-            # concurrent request (health checks, /recall, other uploads, ...).
-            return client.chat.completions.create(
-                model=model,
-                max_tokens=1024,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt_text},
-                        {"type": "image_url", "image_url": {
-                            "url": f"data:{media_type};base64,{b64}"
-                        }},
-                    ],
-                }],
-            )
 
+async def _describe_image_groq(b64: str, media_type: str, prompt_text: str) -> str:
+    import os
+
+    client = _get_groq_client()
+    model = os.getenv("LLM_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+
+    def _call():
+        # Groq's SDK (OpenAI-compatible) is synchronous/blocking; run it off the
+        # event loop thread so a slow vision call doesn't stall every other
+        # concurrent request (health checks, /recall, other uploads, ...).
+        return client.chat.completions.create(
+            model=model,
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt_text},
+                    {"type": "image_url", "image_url": {
+                        "url": f"data:{media_type};base64,{b64}"
+                    }},
+                ],
+            }],
+        )
+
+    resp = await asyncio.to_thread(_call)
+    return resp.choices[0].message.content
+
+
+async def _describe_image_local(b64: str, media_type: str, prompt_text: str) -> str | None:
+    """Offline vision fallback via a local Ollama model (default: moondream — small,
+    fast, vision-capable). Returns None (not an exception) if Ollama isn't reachable,
+    so the caller can cleanly move on to the next fallback in the chain."""
+    import os
+
+    if not _ollama_reachable():
+        return None
+    client = _get_ollama_client()
+    model = os.getenv("OLLAMA_VISION_MODEL", "moondream")
+
+    def _call():
+        return client.chat.completions.create(
+            model=model,
+            max_tokens=768,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt_text},
+                    {"type": "image_url", "image_url": {
+                        "url": f"data:{media_type};base64,{b64}"
+                    }},
+                ],
+            }],
+        )
+
+    try:
         resp = await asyncio.to_thread(_call)
         return resp.choices[0].message.content
+    except Exception:
+        return None
 
+
+async def _describe_image_claude(b64: str, media_type: str, prompt_text: str) -> str:
     client = _get_anthropic_client()
 
     def _call():
@@ -176,24 +282,38 @@ def _get_whisper_model():
 
 async def transcribe_audio(content: bytes, filename: str) -> str:
     """Transcribe audio to text. Uses Groq's hosted Whisper API when configured
-    (faster, no local model download needed); falls back to local Whisper tiny."""
+    (faster, no local model download needed); automatically falls back to local
+    Whisper (tiny model) if Groq errors (rate limit, quota exhausted, network, etc.)
+    or if Groq isn't configured at all."""
     if _using_groq():
-        import os
+        try:
+            return await _transcribe_audio_groq(content, filename)
+        except Exception as e:
+            _note_fallback(f"audio: {e}")
+            return await _transcribe_audio_local(content, filename)
 
-        client = _get_groq_client()
-        model = os.getenv("LLM_TRANSCRIPTION_MODEL", "whisper-large-v3")
-        suffix = Path(filename).suffix or ".mp3"
+    return await _transcribe_audio_local(content, filename)
 
-        def _call():
-            # Groq's SDK is synchronous/blocking; run it off the event loop thread.
-            return client.audio.transcriptions.create(
-                model=model,
-                file=(f"audio{suffix}", content),
-            )
 
-        resp = await asyncio.to_thread(_call)
-        return (resp.text or "").strip()
+async def _transcribe_audio_groq(content: bytes, filename: str) -> str:
+    import os
 
+    client = _get_groq_client()
+    model = os.getenv("LLM_TRANSCRIPTION_MODEL", "whisper-large-v3")
+    suffix = Path(filename).suffix or ".mp3"
+
+    def _call():
+        # Groq's SDK is synchronous/blocking; run it off the event loop thread.
+        return client.audio.transcriptions.create(
+            model=model,
+            file=(f"audio{suffix}", content),
+        )
+
+    resp = await asyncio.to_thread(_call)
+    return (resp.text or "").strip()
+
+
+async def _transcribe_audio_local(content: bytes, filename: str) -> str:
     import tempfile, os
     try:
         import whisper  # noqa: F401  (import check only; loading is cached separately)
@@ -325,6 +445,12 @@ HERO = ROOT / "data" / "hero_case"
 DATASET = "coldcases"
 UPLOADED_NODES: list[dict] = []
 
+# --- Case label: either a manual override (set via POST /case-name) or an
+# LLM-auto-generated short label derived from the ingested evidence itself,
+# regenerated only when the evidence set actually changes (cheap to poll). ---
+CASE_LABEL_OVERRIDE: str | None = None
+_case_label_cache: dict = {"label": None, "upload_count": -1}
+
 # --- try to go LIVE; fall back to DEGRADED cleanly ---------------------------
 LIVE = False
 mem = None
@@ -427,7 +553,79 @@ class ChatReq(BaseModel):
 # --- routes (match API_CONTRACT.md) ------------------------------------------
 @app.get("/health")
 def health():
-    return {"ok": True, "mode": "live" if LIVE else "degraded"}
+    return {
+        "ok": True,
+        "mode": "live" if LIVE else "degraded",
+        "fallback": FALLBACK_STATE,
+    }
+
+
+async def _get_case_label() -> str:
+    """Resolve the case label shown in the stats ribbon: a manual override (set via
+    POST /case-name) always wins; otherwise, once there's real ingested evidence, ask
+    the LLM for a short label derived from it (e.g. "Daniel Marsh · Millbrook /
+    Riverside") — cached and only regenerated when the evidence set actually grows,
+    so this doesn't fire an LLM call on every single /graph poll."""
+    if CASE_LABEL_OVERRIDE:
+        return CASE_LABEL_OVERRIDE
+
+    if not UPLOADED_NODES:
+        # No user-uploaded evidence yet — the curated hero-case graph (Daniel Marsh)
+        # is always pre-loaded as the reliable default demo scenario, so show its
+        # real name rather than a misleading "awaiting evidence" placeholder.
+        return "Daniel Marsh · Millbrook / Riverside"
+
+    if _case_label_cache["upload_count"] == len(UPLOADED_NODES) and _case_label_cache["label"]:
+        return _case_label_cache["label"]
+
+    if LIVE:
+        try:
+            res = await mem.recall(
+                "In 6 words or fewer, give a short case label in the exact format "
+                "'PrimaryName · LocationA / LocationB' (or just 'PrimaryName' if there's "
+                "only one location) based on the suspect/victim and place names in this "
+                "evidence. Return ONLY the label, nothing else — no punctuation-free "
+                "explanation, no quotes.",
+                mode=mem.RecallMode.GRAPH,
+                dataset=DATASET,
+            )
+            # res.raw is None specifically when recall() hit its timeout/failure sentinel
+            # (rate-limited/degraded, both Groq and local fallback exhausted) — that path
+            # returns a "temporarily busy" string as res.answer without raising, so it must
+            # be checked explicitly or the friendly error text gets cached as the case name.
+            label = res.answer.strip().strip('"').split("\n")[0][:80]
+            if label and res.raw is not None:
+                _case_label_cache["label"] = label
+                _case_label_cache["upload_count"] = len(UPLOADED_NODES)
+                return label
+        except Exception:
+            pass
+
+    return f"Untitled Case — {len(UPLOADED_NODES)} file(s) ingested"
+
+
+@app.get("/case-name")
+async def get_case_name():
+    return {"label": await _get_case_label(), "manual": CASE_LABEL_OVERRIDE is not None}
+
+
+class CaseNameBody(BaseModel):
+    label: str | None = None  # None/empty clears the override, reverting to auto-label
+
+
+@app.post("/case-name")
+async def set_case_name(body: CaseNameBody):
+    global CASE_LABEL_OVERRIDE
+    CASE_LABEL_OVERRIDE = (body.label or "").strip() or None
+    return {"label": await _get_case_label(), "manual": CASE_LABEL_OVERRIDE is not None}
+
+
+@functools.lru_cache(maxsize=1)
+def hero_case_doc_count() -> int:
+    """Real file count of the pre-loaded hero-case corpus (data/hero_case/*) — the
+    honest floor for 'docs ingested' since that corpus is always in the graph by
+    default, independent of anything the user uploads via Messy Desk this session."""
+    return sum(1 for _ in HERO.glob("*") if _.is_file())
 
 
 @app.get("/graph")
@@ -440,6 +638,8 @@ async def graph():
     payload = mock("graph.json")
     payload["nodes"].extend(UPLOADED_NODES)
     payload["mode"] = "degraded"
+    payload["docs_ingested"] = hero_case_doc_count() + len(UPLOADED_NODES)
+    payload["case_label"] = await _get_case_label()
     if LIVE:
         try:
             res = await mem.recall(

@@ -67,7 +67,10 @@ export default function App() {
   const [visitedTabs, setVisitedTabs] = useState(new Set());
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [mode, setMode] = useState(null);
-  const [stats, setStats] = useState({ nodes: 47, docs: 261, jurisdictions: 3, alibiBreak: true });
+  const [stats, setStats] = useState({ nodes: 0, docs: 0, jurisdictions: 3, alibiBreak: true });
+  const [caseLabel, setCaseLabel] = useState("Loading case…");
+  const [caseLabelManual, setCaseLabelManual] = useState(false);
+  const [editingCaseLabel, setEditingCaseLabel] = useState(false);
   const [improving, setImproving] = useState(false);
   const [improved, setImproved] = useState(null);
   const [justImproved, setJustImproved] = useState(false);
@@ -95,17 +98,42 @@ export default function App() {
 
   useEffect(() => {
     api.health().then((h) => setMode(h.mode)).catch(() => setMode("offline"));
+    // Seed case label/docs/nodes on first load too, not just once GraphPanel happens
+    // to mount (e.g. if the user's first Evidence Board visit is Timeline, not Graph).
+    api.graph().then((g) => setGraphData(g)).catch(() => {});
   }, []);
 
-  // Keep the stats-ribbon node count synced whenever graphData changes for any reason
-  // (initial GraphPanel load, temporal filter refresh, post-ingest refresh, etc.) — it
-  // used to only track the post-ingest path, so opening the Evidence Board cold never
-  // moved the ribbon off its hardcoded initial value.
+  // Keep the stats-ribbon node/doc count and case label synced whenever graphData
+  // changes for any reason (initial GraphPanel load, temporal filter refresh,
+  // post-ingest refresh, etc.) — these are real backend-derived values (not the old
+  // hardcoded frontend defaults), so they're honest across page refreshes too.
   useEffect(() => {
     if (graphData?.nodes?.length) {
       setStats((prev) => ({ ...prev, nodes: graphData.nodes.length }));
     }
+    if (typeof graphData?.docs_ingested === "number") {
+      setStats((prev) => ({ ...prev, docs: graphData.docs_ingested }));
+    }
+    if (graphData?.case_label) {
+      setCaseLabel(graphData.case_label);
+    }
   }, [graphData]);
+
+  async function handleSaveCaseLabel(newLabel) {
+    const trimmed = (newLabel || "").trim();
+    try {
+      const res = await api.setCaseName(trimmed);
+      setCaseLabel(res.label);
+      setCaseLabelManual(res.manual);
+    } catch {
+      // best-effort — keep whatever was showing rather than blocking the UI
+    }
+    setEditingCaseLabel(false);
+  }
+
+  async function handleResetCaseLabel() {
+    await handleSaveCaseLabel("");
+  }
 
   useEffect(() => {
     function onKey(e) {
@@ -167,12 +195,10 @@ export default function App() {
     api.graph().then((g) => {
       const prevCount = graphData?.nodes?.length || 0;
       const newCount = g?.nodes?.length || 0;
-      setGraphData(g);
-      setStats((prev) => ({ ...prev, nodes: newCount || prev.nodes, docs: prev.docs + 1 }));
+      setGraphData(g); // stats.nodes/docs/caseLabel all sync off this via the useEffect above
       const delta = newCount - prevCount;
       showToast(`Graph updated${delta > 0 ? ` — ${delta} new node${delta !== 1 ? "s" : ""} ingested` : " — graph refreshed"}`);
     }).catch(() => {
-      setStats((prev) => ({ ...prev, docs: prev.docs + 1 }));
       showToast("Graph refreshed after ingest");
     });
   }
@@ -247,9 +273,36 @@ export default function App() {
 
       {workspaceOpen && (
         <div className="stats-ribbon">
-         <span className="stat-item">
+         <span className="stat-item case-label-item">
           <span className="stat-key" style={{color:"var(--muted)"}}>ACTIVE CASE:</span>
-          <span className="stat-val" style={{color:"var(--text)"}}>Daniel Marsh · Millbrook / Riverside</span>
+          {editingCaseLabel ? (
+            <input
+              autoFocus
+              className="case-label-input"
+              defaultValue={caseLabelManual ? caseLabel : ""}
+              placeholder="e.g. Jane Doe · Downtown / Westside"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveCaseLabel(e.target.value);
+                if (e.key === "Escape") setEditingCaseLabel(false);
+              }}
+              onBlur={(e) => handleSaveCaseLabel(e.target.value)}
+            />
+          ) : (
+            <span
+              className="stat-val case-label-val"
+              style={{color:"var(--text)"}}
+              title="Click to set a custom case name — leave blank to let the AI auto-name it from ingested evidence"
+              onClick={() => setEditingCaseLabel(true)}
+            >
+              {caseLabel}
+              <span className="case-label-edit-icon">✏️</span>
+            </span>
+          )}
+          {caseLabelManual && !editingCaseLabel && (
+            <button className="case-label-reset-btn" title="Let AI auto-name the case instead" onClick={handleResetCaseLabel}>
+              ↺ auto
+            </button>
+          )}
         </span>
         <span className="stat-item">
           <span className="stat-dot" style={{background:"var(--accent)"}}/>
