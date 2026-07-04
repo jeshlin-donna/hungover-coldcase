@@ -91,24 +91,77 @@ async function expandToFiles(rawFiles) {
 
 export default function UploadPanel({ onGraphUpdated, onNext }) {
   const [dragging, setDragging] = useState(false);
-  const [queue, setQueue] = useState([]); // [{id, file, status, description, mode}]
+  const [queue, setQueue] = useState([]); // [{id, file, status, progress, phase}]
   const [expanding, setExpanding] = useState(false);
   const [ingestedFiles, setIngestedFiles] = useState([]);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  const [overallDone, setOverallDone] = useState(0);
+  const [overallTotal, setOverallTotal] = useState(0);
   const inputRef = useRef();
   const folderInputRef = useRef();
   const processingRef = useRef(false);
 
-  const firstImage = queue.find((q) => q.status === "queued" && getModality(q.file.name) === "image");
+  const expandedItem = queue.find((q) => q.id === expandedId) || null;
   useEffect(() => {
-    if (firstImage) {
-      const url = URL.createObjectURL(firstImage.file);
+    if (expandedItem) {
+      const url = URL.createObjectURL(expandedItem.file);
       setPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
     }
     setPreviewUrl(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firstImage?.id]);
+  }, [expandedItem?.id]);
+
+  function toggleExpanded(id) {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }
+
+  // Recursively walk a dropped directory entry (webkitGetAsEntry) so dragging
+  // a whole case folder (e.g. "case-01/") in from the Finder picks up every
+  // file inside it, not just the top-level folder handle.
+  function readEntry(entry) {
+    return new Promise((resolve) => {
+      if (entry.isFile) {
+        entry.file(
+          (file) => resolve([file]),
+          () => resolve([])
+        );
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const all = [];
+        const readBatch = () => {
+          reader.readEntries(async (entries) => {
+            if (!entries.length) {
+              resolve(all);
+              return;
+            }
+            for (const e of entries) {
+              all.push(...(await readEntry(e)));
+            }
+            readBatch(); // readEntries can paginate — keep reading until empty
+          }, () => resolve(all));
+        };
+        readBatch();
+      } else {
+        resolve([]);
+      }
+    });
+  }
+
+  async function filesFromDataTransfer(dataTransfer) {
+    const items = dataTransfer.items;
+    if (items && items.length && typeof items[0].webkitGetAsEntry === "function") {
+      const entries = Array.from(items)
+        .map((it) => it.webkitGetAsEntry())
+        .filter(Boolean);
+      if (entries.length) {
+        const nested = await Promise.all(entries.map(readEntry));
+        return nested.flat();
+      }
+    }
+    return Array.from(dataTransfer.files || []);
+  }
 
   async function handleFiles(rawFiles) {
     const list = Array.from(rawFiles || []);
@@ -130,10 +183,13 @@ export default function UploadPanel({ onGraphUpdated, onNext }) {
   function onDragLeave() {
     setDragging(false);
   }
-  function onDrop(e) {
+  async function onDrop(e) {
     e.preventDefault();
     setDragging(false);
-    handleFiles(e.dataTransfer.files);
+    setExpanding(true);
+    const files = await filesFromDataTransfer(e.dataTransfer);
+    setExpanding(false);
+    handleFiles(files);
   }
   function onInputChange(e) {
     handleFiles(e.target.files);
@@ -154,12 +210,27 @@ export default function UploadPanel({ onGraphUpdated, onNext }) {
     // throughput-limited, so a tight upload loop would just queue up
     // rate-limit retries. One at a time keeps status feedback honest.
     const snapshot = queue.filter((q) => q.status === "queued");
-    for (const { id, file } of snapshot) {
-      setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, status: "uploading" } : q)));
+    setOverallTotal(snapshot.length);
+    setOverallDone(0);
+    for (let i = 0; i < snapshot.length; i++) {
+      const { id, file } = snapshot[i];
+      setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, status: "uploading", progress: 0, phase: "uploading" } : q)));
       let result;
       try {
-        result = await api.ingestFile(file);
-        setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, status: "done" } : q)));
+        result = await api.ingestFile(file, (frac) => {
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.id === id
+                ? {
+                    ...q,
+                    progress: frac,
+                    phase: frac >= 1 ? "processing" : "uploading",
+                  }
+                : q
+            )
+          );
+        });
+        setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, status: "done", progress: 1 } : q)));
       } catch {
         result = null;
         setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, status: "error" } : q)));
@@ -177,10 +248,13 @@ export default function UploadPanel({ onGraphUpdated, onNext }) {
         ...prev,
       ]);
       onGraphUpdated?.();
+      setOverallDone((n) => n + 1);
       // brief pause so the UI can visibly step through the queue rather than blur past it
       await new Promise((r) => setTimeout(r, 150));
     }
     setQueue((prev) => prev.filter((q) => q.status !== "done"));
+    setOverallTotal(0);
+    setOverallDone(0);
     processingRef.current = false;
   }
 
@@ -264,16 +338,48 @@ export default function UploadPanel({ onGraphUpdated, onNext }) {
             </div>
           </div>
 
-          {previewUrl && (
-            <div className="image-preview-wrap">
-              <img src={previewUrl} alt="preview" className="image-preview" />
-              <span className="image-vision-badge">Claude Vision will extract forensic details</span>
+          {expandedItem && (
+            <div className="expanded-preview-wrap">
+              {getModality(expandedItem.file.name) === "image" && (
+                <>
+                  <img src={previewUrl} alt="preview" className="expanded-preview-image" />
+                  <span className="image-vision-badge">Claude Vision will extract forensic details</span>
+                </>
+              )}
+              {getModality(expandedItem.file.name) === "video" && (
+                <>
+                  <video src={previewUrl} controls className="expanded-preview-video" />
+                  <span className="image-vision-badge">Keyframes → Claude vision on ingest</span>
+                </>
+              )}
+              {getModality(expandedItem.file.name) === "audio" && (
+                <div className="expanded-preview-audio">
+                  <div className="expanded-preview-audio-icon">🎙️</div>
+                  <audio src={previewUrl} controls className="expanded-preview-audio-player" />
+                  <span className="image-vision-badge">Whisper will transcribe on ingest</span>
+                </div>
+              )}
+              {["text", "pdf", "spreadsheet"].includes(getModality(expandedItem.file.name)) && (
+                <div className="expanded-preview-doc">
+                  <div className="expanded-preview-doc-icon">{fileIcon(expandedItem.file.name)}</div>
+                  <span className="expanded-preview-doc-name">{expandedItem.file.name}</span>
+                  <span className="image-vision-badge">{modalityHints[getModality(expandedItem.file.name)]}</span>
+                </div>
+              )}
+              <button className="expanded-preview-close" onClick={() => setExpandedId(null)}>
+                ✕ Close preview
+              </button>
             </div>
           )}
 
           <div className="queue-list">
             {queue.map((q) => (
-              <div key={q.id} className={`queue-item queue-item--${q.status}`} style={{ borderLeftColor: modalityColor(q.file.name) }}>
+              <div
+                key={q.id}
+                className={`queue-item queue-item--${q.status}${expandedId === q.id ? " queue-item--expanded" : ""}`}
+                style={{ borderLeftColor: modalityColor(q.file.name) }}
+                onClick={() => toggleExpanded(q.id)}
+              >
                 <span className="pending-icon">{fileIcon(q.file.name)}</span>
                 <div className="pending-meta" style={{ flex: 1, minWidth: 0 }}>
                   <span className="pending-name">{q.file.name}</span>
@@ -281,25 +387,54 @@ export default function UploadPanel({ onGraphUpdated, onNext }) {
                     {formatBytes(q.file.size)}
                     {modalityHints[getModality(q.file.name)] && ` · ${modalityHints[getModality(q.file.name)]}`}
                   </span>
+                  {q.status === "uploading" && (
+                    <div className="item-progress-track">
+                      <div
+                        className={`item-progress-fill${q.phase === "processing" ? " item-progress-fill--indeterminate" : ""}`}
+                        style={q.phase === "processing" ? undefined : { width: `${Math.round((q.progress || 0) * 100)}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
                 {q.status === "queued" && (
-                  <button className="dismiss-btn dismiss-btn--sm" onClick={() => removeFromQueue(q.id)}>
+                  <button
+                    className="dismiss-btn dismiss-btn--sm"
+                    onClick={(e) => { e.stopPropagation(); removeFromQueue(q.id); }}
+                  >
                     ✕
                   </button>
                 )}
                 {q.status === "uploading" && (
-                  <span className="queue-spinner">{ingestionLabels[getModality(q.file.name)] || "Ingesting…"}</span>
+                  <span className="queue-spinner">
+                    {q.phase === "processing"
+                      ? (ingestionLabels[getModality(q.file.name)] || "Ingesting…")
+                      : `Uploading… ${Math.round((q.progress || 0) * 100)}%`}
+                  </span>
                 )}
                 {q.status === "error" && <span className="queue-error">failed</span>}
               </div>
             ))}
           </div>
 
+          {overallTotal > 0 && (
+            <div className="overall-progress">
+              <div className="overall-progress-label">
+                Ingesting {overallDone}/{overallTotal} files…
+              </div>
+              <div className="overall-progress-track">
+                <div
+                  className="overall-progress-fill"
+                  style={{ width: `${Math.round((overallDone / overallTotal) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="pending-actions" style={{ marginTop: 14 }}>
-            <button className="upload-btn" onClick={ingestAll} disabled={queuedCount === 0}>
-              Ingest all into graph ({queuedCount})
+            <button className="upload-btn" onClick={ingestAll} disabled={queuedCount === 0 || overallTotal > 0}>
+              {overallTotal > 0 ? "Ingesting…" : `Ingest all into graph (${queuedCount})`}
             </button>
-            <button className="dismiss-btn" onClick={clearQueue}>
+            <button className="dismiss-btn" onClick={clearQueue} disabled={overallTotal > 0}>
               Clear queue
             </button>
           </div>

@@ -55,10 +55,26 @@ export const api = {
   nexus: (from_node, to_node) => post("/nexus", { from_node, to_node }),
   interrogation: (suspect_id, focus_case) => post("/interrogation", { suspect_id, focus_case }),
   whatif: (hypothesis, inject_edge) => post("/whatif", { hypothesis, inject_edge: inject_edge || {} }),
-  ingestFile: (file) => {
+  ingestFile: (file, onProgress) => {
     const fd = new FormData();
     fd.append("file", file);
-    return fetch(`${BASE}/ingest-file`, { method: "POST", body: fd }).then((r) => r.json());
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${BASE}/ingest-file`);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        onProgress?.(1);
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch {
+          reject(new Error("ingest-file: bad response"));
+        }
+      };
+      xhr.onerror = () => reject(new Error("ingest-file: network error"));
+      xhr.send(fd);
+    });
   },
   transcribe: (blob, filename = "recording.webm") => {
     const fd = new FormData();
