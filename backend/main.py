@@ -777,7 +777,9 @@ async def _case_llm_answer(analysis: dict, instruction: str, question: str) -> s
     if model.startswith("groq/"): model = model.split("/", 1)[1]
     facts = {
         "summary": analysis["summary"],
-        "entities": [{"type": n["type"], "label": n["label"]} for n in analysis["nodes"] if n["type"] != "document"][:60],
+        "entities": [{"type": n["type"], "label": n["label"], "role": n.get("role"),
+                      "status": n.get("status"), "sources": n.get("sources", [])}
+                     for n in analysis["nodes"] if n["type"] != "document"][:60],
         "timeline": analysis["timeline"][:30],
     }
     payload = json.dumps({"model": model, "messages": [
@@ -819,11 +821,12 @@ async def case_chat(case_id: str, req: ChatReq):
     case = await asyncio.to_thread(case_store.get_case, case_id)
     if not case: raise HTTPException(404, "Case not found.")
     analysis, _ = await _get_case_analysis(case_id)
+    sources = case_analysis.sources_for_question(analysis, req.message)
     if not LIVE:
-        return {"answer": case_analysis.answer(analysis, req.message), "sources": [], "mode": "derived"}
+        return {"answer": case_analysis.answer(analysis, req.message), "sources": sources, "mode": "derived"}
     history = "\n".join(f"{x.get('role','user')}: {x.get('text','')}" for x in req.history[-4:])
     answer = await _case_llm_answer(analysis, "Answer the latest question concisely. Conversation is context, not evidence.", f"{history}\n{req.message}")
-    return {"answer": answer or case_analysis.answer(analysis, req.message), "sources": [], "mode": "live" if answer else "derived"}
+    return {"answer": answer or case_analysis.answer(analysis, req.message), "sources": sources, "mode": "live" if answer else "derived"}
 
 
 @app.get("/cases/{case_id}/chat/suggestions")

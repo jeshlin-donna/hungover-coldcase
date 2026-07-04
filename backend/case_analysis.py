@@ -160,7 +160,8 @@ def answer(analysis: dict, question: str) -> str:
     locations = [n["label"] for n in nodes if n["type"] == "location"]
     vehicles = [n["label"] for n in nodes if n["type"] == "vehicle"]
     if any(word in q for word in ("who", "person", "people", "suspect")):
-        return "People identified in the verified evidence: " + (", ".join(people) or "none yet") + "."
+        people_with_roles = [f"{n['label']} ({n.get('role') or 'role not established'})" for n in nodes if n["type"] == "person"]
+        return "People identified in the verified evidence: " + (", ".join(people_with_roles) or "none yet") + "."
     if "timeline" in q or "when" in q:
         events = analysis["timeline"][:8]
         return "Timeline: " + ("; ".join(f"{e['date']} {e.get('time') or ''} — {e['title']}" for e in events) or "no dated events extracted") + "."
@@ -169,3 +170,17 @@ def answer(analysis: dict, question: str) -> str:
     if "vehicle" in q or "car" in q:
         return "Vehicles in verified evidence: " + (", ".join(vehicles) or "none yet") + "."
     return analysis["summary"] + (" Key evidence: " + ", ".join(evidence[:10]) + "." if evidence else "")
+
+
+def sources_for_question(analysis: dict, question: str) -> list[str]:
+    """Return the verified filenames most relevant to a case-tool question."""
+    q = question.lower()
+    if "timeline" in q or "when" in q:
+        return list(dict.fromkeys(event["source"] for event in analysis["timeline"] if event.get("source")))
+    kinds = None
+    if any(word in q for word in ("who", "person", "people", "suspect", "witness", "examiner")): kinds = {"person"}
+    elif "where" in q or "location" in q: kinds = {"location"}
+    elif "vehicle" in q or "car" in q: kinds = {"vehicle"}
+    elif "evidence" in q or "tool" in q: kinds = {"evidence"}
+    selected = [node for node in analysis["nodes"] if kinds is None or node["type"] in kinds]
+    return list(dict.fromkeys(source for node in selected for source in node.get("sources", [])))[:20]

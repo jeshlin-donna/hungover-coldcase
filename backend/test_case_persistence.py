@@ -120,6 +120,9 @@ class CasePersistenceTests(unittest.TestCase):
         analysis = case_analysis.build(case_store.get_case(self.case["id"]), case_store.list_evidence(self.case["id"]))
         names = {node["label"] for node in analysis["nodes"] if node["type"] == "person"}
         self.assertTrue({"Avery Quinn", "Morgan Lee", "Priya Shah"}.issubset(names))
+        response = case_analysis.answer(analysis, "Who is named?")
+        self.assertIn("Avery Quinn (suspect)", response)
+        self.assertIn("people.txt", case_analysis.sources_for_question(analysis, "Who is named?"))
 
 
 if __name__ == "__main__":
