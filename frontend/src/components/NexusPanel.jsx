@@ -206,6 +206,13 @@ export default function NexusPanel() {
           </div>
 
           <p className="nexus-narrative">{result.narrative}</p>
+
+          {result.cognee_insight && (
+            <div className="cognee-insight-box">
+              <span className="cognee-insight-label">Cognee graph insight</span>
+              <p className="cognee-insight-text">{result.cognee_insight}</p>
+            </div>
+          )}
         </div>
       )}
 
