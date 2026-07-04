@@ -64,6 +64,7 @@ const GUIDE_SEEN_KEY = "coldcache_guide_seen";
 
 export default function App() {
   const [tab, setTab] = useState("upload");
+  const [visitedTabs, setVisitedTabs] = useState(new Set());
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [mode, setMode] = useState(null);
   const [stats, setStats] = useState({ nodes: 47, docs: 261, jurisdictions: 3, alibiBreak: true });
@@ -105,7 +106,7 @@ export default function App() {
         setTab("upload");
       } else if (idx > 0 && idx <= SUB_TABS.length) {
         setWorkspaceOpen(true);
-        setTab(SUB_TABS[idx - 1].id);
+        selectTab(SUB_TABS[idx - 1].id);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -164,9 +165,14 @@ export default function App() {
     });
   }
 
+  function selectTab(id) {
+    setTab(id);
+    setVisitedTabs((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }
+
   function handleProceedToWorkspace() {
     setWorkspaceOpen(true);
-    setTab("graph");
+    selectTab("graph");
   }
 
   function copyReportAsMarkdown() {
@@ -288,7 +294,7 @@ export default function App() {
                   <button
                     key={t.id}
                     className={tab === t.id ? "active" : ""}
-                    onClick={() => setTab(t.id)}
+                    onClick={() => selectTab(t.id)}
                     title={t.blurb}
                   >
                     <span className="tab-icon">{t.icon}</span>
@@ -298,18 +304,30 @@ export default function App() {
               </nav>
 
               <main>
-                <div key={tab} className="tab-panel-fade">
-                  {tab === "graph" && (
+                {visitedTabs.has("graph") && (
+                  <div style={{ display: tab === "graph" ? "block" : "none" }} className="tab-panel-fade">
                     <GraphPanel
                       justImproved={justImproved}
                       graphData={graphData}
                       onGraphLoaded={setGraphData}
                     />
-                  )}
-                  {tab === "timeline" && <TimelinePanel />}
-                  {tab === "interrogation" && <InterrogationPanel />}
-                  {tab === "whatif" && <WhatIfPanel />}
-                </div>
+                  </div>
+                )}
+                {visitedTabs.has("timeline") && (
+                  <div style={{ display: tab === "timeline" ? "block" : "none" }} className="tab-panel-fade">
+                    <TimelinePanel />
+                  </div>
+                )}
+                {visitedTabs.has("interrogation") && (
+                  <div style={{ display: tab === "interrogation" ? "block" : "none" }} className="tab-panel-fade">
+                    <InterrogationPanel />
+                  </div>
+                )}
+                {visitedTabs.has("whatif") && (
+                  <div style={{ display: tab === "whatif" ? "block" : "none" }} className="tab-panel-fade">
+                    <WhatIfPanel />
+                  </div>
+                )}
               </main>
             </div>
           </div>
@@ -335,7 +353,19 @@ export default function App() {
                 <button
                   key={t.id}
                   className="guide-row"
-                  onClick={() => { setTab(t.id); closeGuide(); }}
+                  onClick={() => {
+                    if (t.id === "upload") {
+                      setWorkspaceOpen(false);
+                      setTab("upload");
+                    } else if (t.id === "chat") {
+                      setWorkspaceOpen(true);
+                      selectTab("graph");
+                    } else {
+                      setWorkspaceOpen(true);
+                      selectTab(t.id);
+                    }
+                    closeGuide();
+                  }}
                 >
                   <span className="guide-row-icon">{t.icon}</span>
                   <span className="guide-row-body">
