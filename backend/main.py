@@ -53,6 +53,43 @@ def _media_type_for(filename: str) -> str | None:
             ".webp": "image/webp"}.get(ext)
 
 _anthropic_client = None
+_groq_client = None
+
+VISION_PROMPT = (
+    "You are analyzing evidence for a cold case investigation. "
+    "Image filename: {filename}\n\n"
+    "Describe this image in forensic detail. Note: any visible people "
+    "(physical description, clothing, distinguishing features), vehicles "
+    "(make, model, color, license plates), locations or addresses, objects "
+    "of interest, any visible text or timestamps, and anything potentially "
+    "relevant to a criminal investigation. Be specific and factual."
+)
+
+
+def _using_groq() -> bool:
+    """True when LLM_PROVIDER/LLM_ENDPOINT are configured to point at Groq's
+    OpenAI-compatible API — lets us route vision + transcription through Groq
+    too instead of Anthropic/local Whisper, using the same single LLM_API_KEY."""
+    import os
+
+    provider = (os.getenv("LLM_PROVIDER") or "").lower()
+    endpoint = (os.getenv("LLM_ENDPOINT") or "").lower()
+    return provider == "groq" or "groq.com" in endpoint
+
+
+def _get_groq_client():
+    """Lazily construct and cache an OpenAI-SDK client pointed at Groq's
+    OpenAI-compatible endpoint (avoids reconnecting per-request)."""
+    global _groq_client
+    if _groq_client is None:
+        import os
+        from openai import OpenAI
+
+        _groq_client = OpenAI(
+            api_key=os.getenv("LLM_API_KEY"),
+            base_url=os.getenv("LLM_ENDPOINT") or "https://api.groq.com/openai/v1",
+        )
+    return _groq_client
 
 
 def _get_anthropic_client():
@@ -67,9 +104,39 @@ def _get_anthropic_client():
 
 
 async def describe_image(content: bytes, filename: str, media_type: str) -> str:
-    """Send image to Claude vision and get a forensic description for Cognee ingestion."""
-    client = _get_anthropic_client()
+    """Send image to a vision LLM and get a forensic description for Cognee ingestion.
+    Routes to Groq's vision model when configured, else Claude vision."""
     b64 = base64.standard_b64encode(content).decode()
+    prompt_text = VISION_PROMPT.format(filename=filename)
+
+    if _using_groq():
+        import os
+
+        client = _get_groq_client()
+        model = os.getenv("LLM_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+
+        def _call():
+            # Groq's SDK (OpenAI-compatible) is synchronous/blocking; run it off the
+            # event loop thread so a slow vision call doesn't stall every other
+            # concurrent request (health checks, /recall, other uploads, ...).
+            return client.chat.completions.create(
+                model=model,
+                max_tokens=1024,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt_text},
+                        {"type": "image_url", "image_url": {
+                            "url": f"data:{media_type};base64,{b64}"
+                        }},
+                    ],
+                }],
+            )
+
+        resp = await asyncio.to_thread(_call)
+        return resp.choices[0].message.content
+
+    client = _get_anthropic_client()
 
     def _call():
         # anthropic's SDK is synchronous/blocking; run it off the event loop thread
@@ -84,15 +151,7 @@ async def describe_image(content: bytes, filename: str, media_type: str) -> str:
                     {"type": "image", "source": {"type": "base64",
                                                   "media_type": media_type,
                                                   "data": b64}},
-                    {"type": "text", "text": (
-                        f"You are analyzing evidence for a cold case investigation. "
-                        f"Image filename: {filename}\n\n"
-                        "Describe this image in forensic detail. Note: any visible people "
-                        "(physical description, clothing, distinguishing features), vehicles "
-                        "(make, model, color, license plates), locations or addresses, objects "
-                        "of interest, any visible text or timestamps, and anything potentially "
-                        "relevant to a criminal investigation. Be specific and factual."
-                    )}
+                    {"type": "text", "text": prompt_text}
                 ]
             }]
         )
@@ -116,7 +175,25 @@ def _get_whisper_model():
 
 
 async def transcribe_audio(content: bytes, filename: str) -> str:
-    """Transcribe audio to text using local Whisper tiny model."""
+    """Transcribe audio to text. Uses Groq's hosted Whisper API when configured
+    (faster, no local model download needed); falls back to local Whisper tiny."""
+    if _using_groq():
+        import os
+
+        client = _get_groq_client()
+        model = os.getenv("LLM_TRANSCRIPTION_MODEL", "whisper-large-v3")
+        suffix = Path(filename).suffix or ".mp3"
+
+        def _call():
+            # Groq's SDK is synchronous/blocking; run it off the event loop thread.
+            return client.audio.transcriptions.create(
+                model=model,
+                file=(f"audio{suffix}", content),
+            )
+
+        resp = await asyncio.to_thread(_call)
+        return (resp.text or "").strip()
+
     import tempfile, os
     try:
         import whisper  # noqa: F401  (import check only; loading is cached separately)

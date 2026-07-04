@@ -6,6 +6,7 @@ data/raw/*
 !data/raw/.gitkeep
 .cognee_system/
 cognee_data/
+.cognee_data/
 node_modules/
 frontend/dist/
 benchmark/results.json
