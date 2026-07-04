@@ -2,16 +2,17 @@ import { useEffect, useState } from "react";
 import { api } from "./api.js";
 import ChatPanel from "./components/ChatPanel.jsx";
 import GraphPanel from "./components/GraphPanel.jsx";
-import TimelinePanel from "./components/TimelinePanel.jsx";
-import InterrogationPanel from "./components/InterrogationPanel.jsx";
-import WhatIfPanel from "./components/WhatIfPanel.jsx";
-import UploadPanel from "./components/UploadPanel.jsx";
+import CaseTimelinePanel from "./components/CaseTimelinePanel.jsx";
+import CaseInterrogationPanel from "./components/CaseInterrogationPanel.jsx";
+import CaseWhatIfPanel from "./components/CaseWhatIfPanel.jsx";
+import CaseHome from "./components/CaseHome.jsx";
+import CaseImportPanel from "./components/CaseImportPanel.jsx";
 import SuspectTimelinePanel from "./components/SuspectTimelinePanel.jsx";
 
 const MAIN_TABS = [
   {
     id: "upload",
-    label: "Messy Desk",
+    label: "Import Case Files and Data",
     icon: "📁",
     blurb: "Drag-and-drop ingestion for new case files (audio, photos, text) straight into the knowledge graph.",
     tryText: "Try: drop a file and watch it get parsed into graph nodes in real time.",
@@ -58,15 +59,16 @@ const SUB_TABS = [
 ];
 
 const NAV_TABS = SUB_TABS;
-const GUIDE_TABS = [MAIN_TABS[0], ...SUB_TABS, CHAT_TAB];
+const GUIDE_TABS = [MAIN_TABS[0], ...NAV_TABS, CHAT_TAB];
 
 const GUIDE_SEEN_KEY = "coldcache_guide_seen";
 
 export default function App() {
+  const [activeCase, setActiveCase] = useState(null);
   const [tab, setTab] = useState("upload");
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [mode, setMode] = useState(null);
-  const [stats, setStats] = useState({ nodes: 47, docs: 261, jurisdictions: 3, alibiBreak: true });
+  const [stats, setStats] = useState({ nodes: 0, docs: 0, jurisdictions: 0, alibiBreak: false });
   const [improving, setImproving] = useState(false);
   const [improved, setImproved] = useState(null);
   const [justImproved, setJustImproved] = useState(false);
@@ -94,7 +96,11 @@ export default function App() {
 
   useEffect(() => {
     api.health().then((h) => setMode(h.mode)).catch(() => setMode("offline"));
-  }, []);
+    if (!activeCase) return;
+    api.caseStats(activeCase.id).then((s) => setStats({
+      nodes: s.nodes, docs: s.docs, jurisdictions: s.jurisdictions, alibiBreak: s.alibi_break,
+    })).catch(() => {});
+  }, [activeCase]);
 
   useEffect(() => {
     function onKey(e) {
@@ -120,8 +126,8 @@ export default function App() {
   async function handleImprove() {
     setImproving(true);
     try {
-      await api.resolve([]);
-      setImproved({ before: "0.42", after: "0.71", metric: "recall@3" });
+      const result = await api.resolve([]);
+      setImproved({ before: Number(result.before).toFixed(2), after: Number(result.after).toFixed(2), metric: result.metric });
       setJustImproved(true);
       // Re-fetch graph
       try {
@@ -132,7 +138,7 @@ export default function App() {
       }
       setTimeout(() => setJustImproved(false), 3000);
     } catch {
-      setImproved({ before: "0.42", after: "0.71", metric: "recall@3" });
+      showToast("Could not improve the case graph. Check the backend connection.");
     } finally {
       setImproving(false);
     }
@@ -153,7 +159,10 @@ export default function App() {
   }
 
   function handleGraphUpdated() {
-    api.graph().then((g) => {
+    api.caseStats(activeCase.id).then((s) => setStats({
+      nodes: s.nodes, docs: s.docs, jurisdictions: s.jurisdictions, alibiBreak: s.alibi_break,
+    })).catch(() => {});
+    api.graph(activeCase.id).then((g) => {
       const prevCount = graphData?.nodes?.length || 0;
       const newCount = g?.nodes?.length || 0;
       setGraphData(g);
@@ -180,6 +189,18 @@ export default function App() {
     navigator.clipboard.writeText(lines.join("\n")).catch(() => {});
   }
 
+  function openCase(caseRecord) {
+    const hasEvidence = Number(caseRecord.evidence_count || 0) > 0;
+    setActiveCase(caseRecord);
+    setGraphData(null);
+    setWorkspaceOpen(hasEvidence);
+    setTab(hasEvidence ? "graph" : "upload");
+  }
+
+  if (!activeCase) {
+    return <CaseHome onOpen={openCase} />;
+  }
+
   return (
     <div className="app">
       {toast && (
@@ -191,7 +212,7 @@ export default function App() {
           <div className="header-logo">🔍</div>
           <div className="header-title-group">
             <h1>ColdCache</h1>
-            <span className="header-case-label">A Detective's Case Companion</span>
+            <span className="header-case-label">{activeCase.title}{activeCase.reference_number ? ` · ${activeCase.reference_number}` : ""}</span>
           </div>
 
           {improved && (
@@ -213,6 +234,7 @@ export default function App() {
         <div className="header-right">
           
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button className="btn-improve" onClick={() => { setActiveCase(null); setWorkspaceOpen(false); }} title="Return to case list">All Cases</button>
             <button
               className="btn-improve"
               onClick={() => setShowGuide(true)}
@@ -229,9 +251,9 @@ export default function App() {
 
       {workspaceOpen && (
         <div className="stats-ribbon">
-         <span className="stat-item">
+         <span className="stat-item case-label-item">
           <span className="stat-key" style={{color:"var(--muted)"}}>ACTIVE CASE:</span>
-          <span className="stat-val" style={{color:"var(--text)"}}>Daniel Marsh · Millbrook / Riverside</span>
+          <span className="stat-val" style={{color:"var(--text)"}}>{activeCase.title}</span>
         </span>
         <span className="stat-item">
           <span className="stat-dot" style={{background:"var(--accent)"}}/>
@@ -245,14 +267,7 @@ export default function App() {
           <span className="stat-key">docs ingested</span>
         </span>
         <span className="stat-sep">·</span>
-        <span className="stat-sep">·</span>
-        
-        <span className="stat-item alibi-break">
-          <span className="stat-key" style={{color:"var(--muted)"}}> STATUS:</span>
-          <span style={{color:"var(--danger)"}}>⚠</span>
-          <span className="stat-key" style={{color:"var(--danger)"}}>alibi break detected</span>
-        </span>
-        <span className="stat-sep stat-sep-right">·</span>
+        <span className="stat-item"><span className="stat-val">{stats.jurisdictions}</span><span className="stat-key">jurisdictions</span></span>
        
       </div>
       )}
@@ -262,13 +277,13 @@ export default function App() {
           <div className="tab-window">
             <div className="workspace-window-header">
               <button className="back-to-desk" style={{ cursor: "default", opacity: 0.85 }}>
-                Messy Desk
+                Import Case Files and Data
               </button>
             </div>
 
             <main>
               <div className="tab-panel-fade">
-                <UploadPanel onGraphUpdated={handleGraphUpdated} onNext={handleProceedToWorkspace} />
+                <CaseImportPanel caseId={activeCase.id} onGraphUpdated={handleGraphUpdated} onNext={handleProceedToWorkspace} />
               </div>
             </main>
           </div>
@@ -279,7 +294,7 @@ export default function App() {
             <div className="tab-window">
               <div className="workspace-window-header">
                 <button className="back-to-desk" onClick={() => { setWorkspaceOpen(false); setTab("upload"); }}>
-                  ← Messy Desk
+                  ← Import Case Files and Data
                 </button>
               </div>
 
@@ -304,18 +319,19 @@ export default function App() {
                       justImproved={justImproved}
                       graphData={graphData}
                       onGraphLoaded={setGraphData}
+                      caseId={activeCase.id}
                     />
                   )}
-                  {tab === "timeline" && <TimelinePanel />}
-                  {tab === "interrogation" && <InterrogationPanel />}
-                  {tab === "whatif" && <WhatIfPanel />}
+                  {tab === "timeline" && <CaseTimelinePanel caseId={activeCase.id} />}
+                  {tab === "interrogation" && <CaseInterrogationPanel caseId={activeCase.id} />}
+                  {tab === "whatif" && <CaseWhatIfPanel caseId={activeCase.id} />}
                 </div>
               </main>
             </div>
           </div>
 
           <aside className="chat-aside" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <ChatPanel />
+            <ChatPanel caseId={activeCase.id} />
           </aside>
         </div>
       )}

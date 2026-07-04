@@ -8,17 +8,16 @@ const WELCOME_MSG = {
   showSuggestions: true,
 };
 
-const SUGGESTED_QUESTIONS = [
-  "Who appears across both Millbrook and Riverside cases?",
-  "What was the suspect's alibi and why does it fail?",
-  "What forensic evidence links the three burglaries?",
+const FALLBACK_QUESTIONS = [
+  "What evidence connects incidents across jurisdictions?",
+  "Which claims are contradicted by verified records?",
+  "What important gap should an investigator pursue next?",
 ];
 
-const SUGGESTED = "Who was present at both the Millbrook Heights and Riverside View burglaries?";
-
-export default function ChatPanel() {
+export default function ChatPanel({ caseId }) {
   const [messages, setMessages] = useState([WELCOME_MSG]);
-  const [input, setInput] = useState(SUGGESTED);
+  const [input, setInput] = useState("");
+  const [suggestions, setSuggestions] = useState(FALLBACK_QUESTIONS);
   const [loading, setLoading] = useState(false);
   const [recording, setRecording] = useState(false);
   const messagesEndRef = useRef(null);
@@ -30,6 +29,12 @@ export default function ChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    api.chatSuggestions(caseId).then((data) => {
+      if (data.suggestions?.length) setSuggestions(data.suggestions);
+    }).catch(() => {});
+  }, [caseId]);
+
   async function sendMessage(text) {
     if (!text.trim() || loading) return;
     const userMsg = { role: "user", text: text.trim() };
@@ -40,7 +45,7 @@ export default function ChatPanel() {
     setInput("");
     setLoading(true);
     try {
-      const res = await api.chat(text.trim(), history);
+      const res = await api.chat(text.trim(), history, caseId);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", text: res.answer, sources: res.sources || [] },
@@ -50,8 +55,8 @@ export default function ChatPanel() {
         ...prev,
         {
           role: "assistant",
-          text: "Based on the case graph, Daniel Marsh was identified across three burglary incidents in two jurisdictions. The tool-mark evidence (8mm left-nick pry blade) and the dark blue Honda Accord connect all three scenes. The motel receipt places him 4.2 miles from the Riverside View scene at 00:48.",
-          sources: ["MH-0102-FOR", "RV-0788-WIT", "MARSH-ALIBI"],
+          text: "I couldn't reach the case reasoning service. Please check that the backend and configured LLM are available, then try again.",
+          sources: [],
         },
       ]);
     } finally {
@@ -112,7 +117,7 @@ export default function ChatPanel() {
             <div className="chat-msg-text">{msg.text}</div>
             {msg.showSuggestions && (
               <div className="chat-suggestions">
-                {SUGGESTED_QUESTIONS.map((q) => (
+                {suggestions.map((q) => (
                   <button
                     key={q}
                     className="chat-suggestion-chip"

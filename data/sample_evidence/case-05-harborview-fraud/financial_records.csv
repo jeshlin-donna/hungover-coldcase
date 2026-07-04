@@ -1,0 +1,6 @@
+date,location,amount,card_last4,notes
+2025-04-02,"14 Bayfront Plaza, Harborview",54.20,9981,"purchase near scene, timestamp overlaps incident window"
+2025-04-02,Local Hardware Store,18.75,9981,"cash purchase, possible link to forged vehicle-inspection and repair-shop reports"
+2025-04-02,Gas Station (3mi from scene),40.00,9981,"fuel purchase, ANPR camera hit"
+2025-04-02,ATM Withdrawal,100.00,9981,withdrawal 40 minutes prior to incident window
+2025-04-02,Fast Food Drive-Thru,12.40,9981,"card swipe 1.2 miles from scene, 22:58"

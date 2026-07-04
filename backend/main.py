@@ -15,13 +15,20 @@ from __future__ import annotations
 import asyncio
 import base64
 import functools
+import hashlib
 import json
 import re
+import secrets
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, Form, Header, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from backend import case_store
+from backend import case_analysis
 
 IMAGE_TYPES = {
     "image/jpeg": "image/jpeg",
@@ -53,28 +60,215 @@ def _media_type_for(filename: str) -> str | None:
             ".webp": "image/webp"}.get(ext)
 
 _anthropic_client = None
+_groq_client = None
+_ollama_client = None
+_ollama_reachable_cache: dict = {"ok": False, "checked_at": 0.0}
+FALLBACK_STATE = {"active": False, "last_reason": None, "last_at": None}
+
+_VISION_PROMPT = (
+    "You are analyzing evidence for a cold case investigation. "
+    "Image filename: {filename}\n\n"
+    "Describe this image in forensic detail. Note: any visible people "
+    "(physical description, clothing, distinguishing features), vehicles "
+    "(make, model, color, license plates), locations or addresses, objects "
+    "of interest, any visible text or timestamps, and anything potentially "
+    "relevant to a criminal investigation. Be specific and factual."
+)
+
+# --- Provider detection ----------------------------------------------------------
+
+def _using_groq() -> bool:
+    """True when the configured provider/endpoint is Groq (api.groq.com)."""
+    import os
+
+    provider = (os.getenv("LLM_PROVIDER") or "").lower()
+    endpoint = (os.getenv("LLM_ENDPOINT") or "").lower()
+    return provider == "groq" or "groq.com" in endpoint
+
+
+def _get_groq_client():
+    """Lazily construct and cache a Groq SDK client."""
+    global _groq_client
+    if _groq_client is None:
+        import os
+        try:
+            from groq import Groq
+            _groq_client = Groq(api_key=os.getenv("LLM_API_KEY"))
+        except ImportError:
+            raise RuntimeError(
+                "groq package not installed. Run: pip install groq"
+            )
+    return _groq_client
 
 
 def _get_anthropic_client():
-    """Lazily construct and cache the Anthropic client (avoids reconnecting per-request)."""
+    """Lazily construct and cache an Anthropic client for vision fallback."""
     global _anthropic_client
     if _anthropic_client is None:
         import os
-        import anthropic as ant
-
-        _anthropic_client = ant.Anthropic(api_key=os.getenv("LLM_API_KEY"))
+        try:
+            import anthropic as ant
+            _anthropic_client = ant.Anthropic(api_key=os.getenv("LLM_API_KEY"))
+        except ImportError:
+            raise RuntimeError(
+                "anthropic package not installed. Run: pip install anthropic"
+            )
     return _anthropic_client
 
 
+# --- Vision (image description) --------------------------------------------------
+
+def _get_ollama_client():
+    """Lazily construct and cache an OpenAI-SDK client pointed at a local Ollama
+    server's OpenAI-compatible endpoint — this is the offline fallback used when
+    Groq is rate-limited/out of quota, so multimodal ingestion never hard-fails
+    mid-demo. Requires `ollama serve` running + the model pulled (see .env.example)."""
+    global _ollama_client
+    if _ollama_client is None:
+        import os
+        from openai import OpenAI
+
+        _ollama_client = OpenAI(
+            api_key="ollama",  # unused by Ollama, but required by the SDK
+            base_url=(
+                os.getenv("OLLAMA_ENDPOINT")
+                or f"{os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434').rstrip('/')}/v1"
+            ),
+        )
+    return _ollama_client
+
+
+def _ollama_reachable() -> bool:
+    """Cheap, short-TTL-cached reachability probe for the local Ollama server.
+    Avoids paying a multi-second connect timeout on every single fallback call
+    when Ollama isn't running — but re-checks every 30s in case it comes up."""
+    import os
+    import time
+    import urllib.request
+
+    now = time.monotonic()
+    if now - _ollama_reachable_cache["checked_at"] < 30:
+        return _ollama_reachable_cache["ok"]
+
+    base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+    endpoint = (os.getenv("OLLAMA_ENDPOINT") or f"{base}/v1").rstrip("/")
+    candidates = [f"{endpoint}/models", f"{base}/api/tags"]
+
+    _ollama_reachable_cache["ok"] = False
+    for url in candidates:
+        try:
+            with urllib.request.urlopen(url, timeout=1.5):
+                _ollama_reachable_cache["ok"] = True
+                break
+        except Exception:
+            continue
+    _ollama_reachable_cache["checked_at"] = now
+    return _ollama_reachable_cache["ok"]
+
+
+def _note_fallback(reason: str) -> None:
+    """Record that we just fell back to a local model, so /health can surface
+    it in the UI (stats ribbon / status) instead of it being a silent swap."""
+    import datetime
+
+    FALLBACK_STATE["active"] = True
+    FALLBACK_STATE["last_reason"] = reason
+    FALLBACK_STATE["last_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+    print(f"[fallback] Groq unavailable ({reason}) — switched to local model for this request")
+
+
 async def describe_image(content: bytes, filename: str, media_type: str) -> str:
-    """Send image to Claude vision and get a forensic description for Cognee ingestion."""
-    client = _get_anthropic_client()
+    """Describe an image forensically. Prefer Groq when configured, but preserve
+    Samuel's local-Ollama path and Jeshlin's Groq→local fallback tracking."""
     b64 = base64.standard_b64encode(content).decode()
+    prompt_text = _VISION_PROMPT.format(filename=filename)
+    groq_error = None
+
+    if _using_groq():
+        try:
+            return await _describe_image_groq(b64, media_type, prompt_text)
+        except Exception as e:
+            groq_error = e
+            _note_fallback(f"vision: {e}")
+
+    local = await _describe_image_local(b64, media_type, prompt_text)
+    if local is not None:
+        return local
+
+    try:
+        return await _describe_image_claude(b64, media_type, prompt_text)
+    except Exception as e:
+        if groq_error is not None:
+            return f"[Vision unavailable — Groq failed ({groq_error}) and local/Claude fallback failed ({e})]"
+        return f"[Vision unavailable — local Ollama/Claude fallback failed ({e})]"
+
+
+async def _describe_image_groq(b64: str, media_type: str, prompt_text: str) -> str:
+    import os
+
+    client = _get_groq_client()
+    model = os.getenv("LLM_VISION_MODEL") or os.getenv("VISION_MODEL", "llava-v1.5-7b-4096-preview")
 
     def _call():
-        # anthropic's SDK is synchronous/blocking; run it off the event loop thread
-        # so a slow vision call doesn't stall every other concurrent request
-        # (health checks, /recall, other uploads, ...).
+        return client.chat.completions.create(
+            model=model,
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {
+                        "url": f"data:{media_type};base64,{b64}"
+                    }},
+                    {"type": "text", "text": prompt_text},
+                ],
+            }],
+        )
+
+    resp = await asyncio.to_thread(_call)
+    return resp.choices[0].message.content
+
+
+async def _describe_image_local(b64: str, media_type: str, prompt_text: str) -> str | None:
+    """Offline vision fallback via a local Ollama model. Returns None if Ollama
+    isn't reachable or the local call fails, so callers can try another fallback."""
+    import json
+    import os
+    import urllib.request
+
+    if not _ollama_reachable():
+        return None
+
+    vision_model = os.getenv("OLLAMA_VISION_MODEL") or os.getenv("VISION_MODEL", "llava:7b")
+    ollama_base = (os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434").rstrip("/")
+    endpoint = (os.getenv("OLLAMA_ENDPOINT") or f"{ollama_base}/v1").rstrip("/")
+    chat_base = endpoint[:-3] if endpoint.endswith("/v1") else endpoint
+    chat_url = f"{chat_base.rstrip('/')}/api/chat"
+    payload = json.dumps({
+        "model": vision_model,
+        "messages": [{"role": "user", "content": prompt_text, "images": [b64]}],
+        "stream": False,
+    }).encode()
+
+    def _call_ollama():
+        req = urllib.request.Request(
+            chat_url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read())
+        return data["message"]["content"]
+
+    try:
+        return await asyncio.to_thread(_call_ollama)
+    except Exception:
+        return None
+
+
+async def _describe_image_claude(b64: str, media_type: str, prompt_text: str) -> str:
+    client = _get_anthropic_client()
+
+    def _call():
         return client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1024,
@@ -84,15 +278,7 @@ async def describe_image(content: bytes, filename: str, media_type: str) -> str:
                     {"type": "image", "source": {"type": "base64",
                                                   "media_type": media_type,
                                                   "data": b64}},
-                    {"type": "text", "text": (
-                        f"You are analyzing evidence for a cold case investigation. "
-                        f"Image filename: {filename}\n\n"
-                        "Describe this image in forensic detail. Note: any visible people "
-                        "(physical description, clothing, distinguishing features), vehicles "
-                        "(make, model, color, license plates), locations or addresses, objects "
-                        "of interest, any visible text or timestamps, and anything potentially "
-                        "relevant to a criminal investigation. Be specific and factual."
-                    )}
+                    {"type": "text", "text": prompt_text}
                 ]
             }]
         )
@@ -101,25 +287,55 @@ async def describe_image(content: bytes, filename: str, media_type: str) -> str:
     return msg.content[0].text
 
 
+# --- Audio transcription ---------------------------------------------------------
+
 _whisper_model = None
 
 
 def _get_whisper_model():
-    """Lazily load and cache the Whisper model — loading weights from disk on every
-    request (the previous behavior) added seconds of latency to every audio upload."""
+    """Lazily load and cache the local Whisper model."""
     global _whisper_model
     if _whisper_model is None:
         import whisper
-
         _whisper_model = whisper.load_model("tiny")
     return _whisper_model
 
 
 async def transcribe_audio(content: bytes, filename: str) -> str:
-    """Transcribe audio to text using local Whisper tiny model."""
-    import tempfile, os
+    """Transcribe audio with Groq when configured, automatically falling back to
+    Samuel's local Whisper path if Groq fails or isn't configured."""
+    if _using_groq():
+        try:
+            return await _transcribe_audio_groq(content, filename)
+        except Exception as e:
+            _note_fallback(f"audio: {e}")
+            return await _transcribe_audio_local(content, filename)
+
+    return await _transcribe_audio_local(content, filename)
+
+
+async def _transcribe_audio_groq(content: bytes, filename: str) -> str:
+    import os
+
+    client = _get_groq_client()
+    model = os.getenv("LLM_TRANSCRIPTION_MODEL", "whisper-large-v3")
+    suffix = Path(filename).suffix or ".mp3"
+
+    def _call():
+        return client.audio.transcriptions.create(
+            model=model,
+            file=(f"audio{suffix}", content),
+        )
+
+    resp = await asyncio.to_thread(_call)
+    return (resp.text or "").strip()
+
+
+async def _transcribe_audio_local(content: bytes, filename: str) -> str:
+    import os
+    import tempfile
     try:
-        import whisper  # noqa: F401  (import check only; loading is cached separately)
+        import whisper  # noqa: F401
     except ImportError:
         return "[Audio transcription unavailable: pip install openai-whisper]"
     suffix = Path(filename).suffix or ".mp3"
@@ -128,12 +344,9 @@ async def transcribe_audio(content: bytes, filename: str) -> str:
         tmp_path = f.name
     try:
         def _transcribe():
-            # Whisper's load + transcribe are both CPU-bound and blocking; run them
-            # in a worker thread so the event loop stays free for other requests.
             model = _get_whisper_model()
             result = model.transcribe(tmp_path)
             return result.get("text", "").strip()
-
         return await asyncio.to_thread(_transcribe)
     finally:
         os.unlink(tmp_path)
@@ -247,6 +460,13 @@ BENCH = ROOT / "benchmark" / "results.json"
 HERO = ROOT / "data" / "hero_case"
 DATASET = "coldcases"
 UPLOADED_NODES: list[dict] = []
+PENDING_INGESTIONS: dict[str, dict] = {}
+
+# --- Case label: either a manual override (set via POST /case-name) or an
+# LLM-auto-generated short label derived from the ingested evidence itself,
+# regenerated only when the evidence set actually changes (cheap to poll). ---
+CASE_LABEL_OVERRIDE: str | None = None
+_case_label_cache: dict = {"label": None, "upload_count": -1}
 
 # --- try to go LIVE; fall back to DEGRADED cleanly ---------------------------
 LIVE = False
@@ -346,11 +566,567 @@ class ChatReq(BaseModel):
     message: str
     history: list[dict] = []  # [{"role": "user"|"assistant", "text": "..."}]
 
+class ConfirmIngestReq(BaseModel):
+    review_id: str
+    extracted_text: str | None = None
+    context: str | None = None
+
+class BatchConfirmIngestReq(BaseModel):
+    items: list[ConfirmIngestReq]
+
+class CaseCreateReq(BaseModel):
+    title: str
+    reference_number: str | None = None
+    description: str | None = None
+    jurisdiction: str | None = None
+    incident_date: str | None = None
+
+class CaseUpdateReq(BaseModel):
+    title: str | None = None
+    reference_number: str | None = None
+    description: str | None = None
+    jurisdiction: str | None = None
+    incident_date: str | None = None
+    status: str | None = None
+
+class EvidenceConfirmReq(BaseModel):
+    reviewed_text: str
+    context: str = ""
+
+class EvidenceDraftReq(BaseModel):
+    reviewed_text: str
+    context: str = ""
+    expected_updated_at: str | None = None
+
+MAX_FILES_PER_BATCH = 50
+MAX_FILE_BYTES = 25 * 1024 * 1024
+MAX_BATCH_BYTES = 250 * 1024 * 1024
+
+
+_worker_task = None
+
+
+async def _with_job_heartbeat(job_id: str, awaitable):
+    async def pulse():
+        while True:
+            await asyncio.sleep(10)
+            await asyncio.to_thread(case_store.heartbeat, job_id)
+    task = asyncio.create_task(pulse())
+    try: return await awaitable
+    finally:
+        task.cancel()
+        try: await task
+        except asyncio.CancelledError: pass
+
+
+async def _durable_job_worker():
+    """Single durable worker; queued/running state survives browser and process restarts."""
+    while True:
+        job = await asyncio.to_thread(case_store.claim_job)
+        if not job:
+            await asyncio.to_thread(case_store.recover_expired_jobs)
+            await asyncio.sleep(0.75)
+            continue
+        try:
+            case = await asyncio.to_thread(case_store.get_case, job["case_id"])
+            if not case: raise RuntimeError("Case record no longer exists")
+            if job["kind"] == "reindex":
+                evidence = [item for item in await asyncio.to_thread(case_store.list_evidence, case["id"])
+                            if item["status"] == "ingested" and item["reviewed_text"]]
+                replacement = f"{case['dataset_name'].split('_r')[0]}_r{case['graph_revision'] + 1}_{job['id'][:8]}"
+                await asyncio.to_thread(case_store.job_progress, job["id"], "building_replacement", 15)
+                if LIVE and evidence:
+                    packets = [case_analysis.knowledge_packet(case, item) for item in evidence]
+                    await _with_job_heartbeat(job["id"], mem.remember_many(
+                        packets, dataset=replacement, data_per_batch=1, chunk_size=1200))
+                await asyncio.to_thread(case_store.job_progress, job["id"], "activating_graph", 95)
+                updated = await asyncio.to_thread(case_store.finish_reindex, job, replacement)
+                try:
+                    if LIVE: await mem.expunge(dataset=case["dataset_name"])
+                except Exception:
+                    pass
+                await _get_case_analysis(updated["id"])
+                continue
+            item = await asyncio.to_thread(case_store.get_evidence, job["evidence_id"])
+            if not item: raise RuntimeError("Evidence record no longer exists")
+            if job["kind"] == "analyze":
+                await asyncio.to_thread(case_store.job_progress, job["id"], "reading_file", 10)
+                content = await asyncio.to_thread(case_store.storage_path(item).read_bytes)
+                await asyncio.to_thread(case_store.job_progress, job["id"], f"analyzing_{item['modality']}", 25)
+                output, _ = await _with_job_heartbeat(job["id"], _extract_upload(content, item["original_filename"]))
+                if await asyncio.to_thread(case_store.is_cancel_requested, job["id"]):
+                    await asyncio.to_thread(case_store.finish_cancelled, job)
+                    continue
+                if item["context"]:
+                    output = (f"USER-PROVIDED SUBMISSION CONTEXT\n{item['context']}\n\n"
+                              f"MODEL-GENERATED / EXTRACTED CONTENT — REVIEW BEFORE INGESTION\n{output}")
+                await asyncio.to_thread(case_store.job_progress, job["id"], "saving_review", 92)
+                await asyncio.to_thread(case_store.finish_analysis, job, output)
+            elif job["kind"] == "ingest":
+                await asyncio.to_thread(case_store.job_progress, job["id"], "staging_cognee", 25)
+                if LIVE:
+                    packet = case_analysis.knowledge_packet(case, item)
+                    await _with_job_heartbeat(job["id"], mem.remember(packet, dataset=case["dataset_name"]))
+                await asyncio.to_thread(case_store.job_progress, job["id"], "indexing_graph", 94)
+                await asyncio.to_thread(case_store.finish_ingestion, job)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            await asyncio.to_thread(case_store.fail_job, job, str(e))
+
+
+@app.on_event("startup")
+async def start_durable_worker():
+    global _worker_task
+    await asyncio.to_thread(case_store.init_db)
+    _worker_task = asyncio.create_task(_durable_job_worker())
+
+
+@app.on_event("shutdown")
+async def stop_durable_worker():
+    if _worker_task:
+        _worker_task.cancel()
+        try:
+            await _worker_task
+        except asyncio.CancelledError:
+            pass
+
 
 # --- routes (match API_CONTRACT.md) ------------------------------------------
+@app.post("/cases", status_code=201)
+async def create_case(req: CaseCreateReq):
+    from fastapi import HTTPException
+    if not req.title.strip():
+        raise HTTPException(422, "Case title is required.")
+    return await asyncio.to_thread(case_store.create_case, req.model_dump())
+
+
+@app.get("/cases")
+async def cases_list():
+    return {"cases": await asyncio.to_thread(case_store.list_cases)}
+
+
+@app.get("/cases/{case_id}")
+async def case_detail(case_id: str):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    case["evidence"] = await asyncio.to_thread(case_store.list_evidence, case_id)
+    case["jobs"] = await asyncio.to_thread(case_store.list_jobs, case_id)
+    return case
+
+
+@app.patch("/cases/{case_id}")
+async def case_update(case_id: str, req: CaseUpdateReq):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.update_case, case_id, req.model_dump(exclude_none=True))
+    if not case: raise HTTPException(404, "Case not found.")
+    return case
+
+
+@app.post("/cases/{case_id}/archive")
+async def case_archive(case_id: str):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.archive_case, case_id, True)
+    if not case: raise HTTPException(404, "Case not found.")
+    return case
+
+
+@app.post("/cases/{case_id}/restore")
+async def case_restore(case_id: str):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.archive_case, case_id, False)
+    if not case: raise HTTPException(404, "Case not found.")
+    return case
+
+
+@app.delete("/cases/{case_id}", status_code=204)
+async def case_delete(case_id: str):
+    from fastapi import HTTPException, Response
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    try:
+        if LIVE: await mem.expunge(dataset=case["dataset_name"])
+        await asyncio.to_thread(case_store.delete_case_records, case_id)
+    except ValueError as e: raise HTTPException(409, str(e))
+    return Response(status_code=204)
+
+
+@app.post("/cases/{case_id}/evidence", status_code=202)
+async def case_upload_evidence(
+    case_id: str, files: list[UploadFile] = File(...), contexts: str = Form("[]")
+):
+    from fastapi import HTTPException
+    if not await asyncio.to_thread(case_store.get_case, case_id):
+        raise HTTPException(404, "Case not found.")
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if case["status"] == "archived": raise HTTPException(409, "Archived cases are read-only.")
+    if len(files) > MAX_FILES_PER_BATCH: raise HTTPException(413, f"At most {MAX_FILES_PER_BATCH} files per batch.")
+    declared_sizes = [getattr(upload, "size", None) for upload in files]
+    if any(size is not None and size > MAX_FILE_BYTES for size in declared_sizes):
+        raise HTTPException(413, "One or more files exceed the 25 MB limit.")
+    if all(size is not None for size in declared_sizes) and sum(declared_sizes) > MAX_BATCH_BYTES:
+        raise HTTPException(413, "Batch exceeds the 250 MB limit.")
+    try: parsed = json.loads(contexts)
+    except json.JSONDecodeError: raise HTTPException(422, "contexts must be a JSON array.")
+    if not isinstance(parsed, list): raise HTTPException(422, "contexts must be a JSON array.")
+    parsed += [""] * (len(files) - len(parsed))
+    results = []
+    batch_bytes = 0
+    for index, upload in enumerate(files):
+        file_bytes = 0; digest = hashlib.sha256()
+        temp_dir = ROOT / "data" / "upload_tmp"; temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_path = temp_dir / secrets.token_hex(16)
+        try:
+            with temp_path.open("wb") as staged:
+                while chunk := await upload.read(1024 * 1024):
+                    file_bytes += len(chunk); batch_bytes += len(chunk)
+                    if file_bytes > MAX_FILE_BYTES: raise HTTPException(413, f"{upload.filename} exceeds the 25 MB limit.")
+                    if batch_bytes > MAX_BATCH_BYTES: raise HTTPException(413, "Batch exceeds the 250 MB limit.")
+                    digest.update(chunk); staged.write(chunk)
+            item, job = await asyncio.to_thread(
+                case_store.save_evidence_file, case_id, upload.filename or f"file-{index+1}",
+                temp_path, file_bytes, digest.hexdigest(), upload.content_type,
+                _file_modality(upload.filename or ""), str(parsed[index] or "")
+            )
+        finally:
+            temp_path.unlink(missing_ok=True)
+        results.append({"evidence": item, "job": job, "duplicate_skipped": job is None})
+    return {"ok": True, "results": results}
+
+
+@app.get("/cases/{case_id}/evidence")
+async def case_evidence_list(case_id: str):
+    from fastapi import HTTPException
+    if not await asyncio.to_thread(case_store.get_case, case_id): raise HTTPException(404, "Case not found.")
+    return {"evidence": await asyncio.to_thread(case_store.list_evidence, case_id),
+            "jobs": await asyncio.to_thread(case_store.list_jobs, case_id)}
+
+
+@app.post("/cases/{case_id}/evidence/{evidence_id}/confirm", status_code=202)
+async def case_confirm_evidence(case_id: str, evidence_id: str, req: EvidenceConfirmReq):
+    from fastapi import HTTPException
+    if not req.reviewed_text.strip(): raise HTTPException(422, "Reviewed evidence cannot be empty.")
+    try:
+        job = await asyncio.to_thread(case_store.queue_ingestion, case_id, evidence_id,
+                                      req.reviewed_text.strip(), req.context.strip())
+    except KeyError: raise HTTPException(404, "Evidence not found in this case.")
+    except ValueError as e: raise HTTPException(409, str(e))
+    return {"ok": True, "job": job}
+
+
+@app.patch("/cases/{case_id}/evidence/{evidence_id}/draft")
+async def case_save_evidence_draft(case_id: str, evidence_id: str, req: EvidenceDraftReq):
+    from fastapi import HTTPException
+    try: return await asyncio.to_thread(case_store.save_review_draft, case_id, evidence_id, req.reviewed_text, req.context, req.expected_updated_at)
+    except KeyError: raise HTTPException(404, "Evidence not found.")
+    except ValueError as e: raise HTTPException(409, str(e))
+
+
+@app.post("/cases/{case_id}/evidence/{evidence_id}/retry", status_code=202)
+async def case_retry_evidence(case_id: str, evidence_id: str):
+    from fastapi import HTTPException
+    item = await asyncio.to_thread(case_store.get_evidence, evidence_id)
+    if not item or item["case_id"] != case_id: raise HTTPException(404, "Evidence not found.")
+    kind = "ingest" if item["status"] == "ingestion_failed" else "analyze"
+    try: job = await asyncio.to_thread(case_store.retry_evidence, case_id, evidence_id, kind)
+    except KeyError: raise HTTPException(404, "Evidence not found.")
+    except ValueError as e: raise HTTPException(409, str(e))
+    return {"ok": True, "job": job}
+
+
+@app.post("/cases/{case_id}/evidence/{evidence_id}/cancel")
+async def case_cancel_evidence(case_id: str, evidence_id: str):
+    from fastapi import HTTPException
+    cancelled = await asyncio.to_thread(case_store.cancel_job, case_id, evidence_id)
+    if not cancelled: raise HTTPException(409, "No cancellable job; Cognee ingestion cannot be cancelled after it starts.")
+    return {"ok": True}
+
+
+@app.delete("/cases/{case_id}/evidence/{evidence_id}", status_code=204)
+async def case_delete_evidence(case_id: str, evidence_id: str):
+    from fastapi import HTTPException, Response
+    item = await asyncio.to_thread(case_store.get_evidence, evidence_id)
+    if not item or item["case_id"] != case_id: raise HTTPException(404, "Evidence not found.")
+    try:
+        if item["status"] == "ingested":
+            case = await asyncio.to_thread(case_store.get_case, case_id)
+            remaining = [x for x in await asyncio.to_thread(case_store.list_evidence, case_id)
+                         if x["id"] != evidence_id and x["status"] == "ingested" and x["reviewed_text"]]
+            if LIVE:
+                await mem.expunge(dataset=case["dataset_name"])
+                if remaining: await mem.remember_many([case_analysis.knowledge_packet(case, x) for x in remaining], dataset=case["dataset_name"])
+            deleted = await asyncio.to_thread(case_store.delete_evidence, case_id, evidence_id, True)
+        else:
+            deleted = await asyncio.to_thread(case_store.delete_evidence, case_id, evidence_id)
+    except ValueError as e: raise HTTPException(409, str(e))
+    if not deleted: raise HTTPException(404, "Evidence not found.")
+    return Response(status_code=204)
+
+
+@app.get("/cases/{case_id}/jobs")
+async def case_jobs(case_id: str):
+    return {"jobs": await asyncio.to_thread(case_store.list_jobs, case_id)}
+
+
+@app.get("/cases/{case_id}/events")
+async def case_events(case_id: str, after: int = 0, last_event_id: str | None = Header(None, alias="Last-Event-ID")):
+    """Reload-friendly live job stream; REST polling remains the lossless fallback."""
+    async def stream():
+        cursor = max(after, int(last_event_id or 0))
+        heartbeat = 0
+        while True:
+            events = await asyncio.to_thread(case_store.list_events, case_id, cursor)
+            if events:
+                for event in events:
+                    cursor = event["id"]
+                    yield f"id: {cursor}\nevent: jobs\ndata: {json.dumps(event)}\n\n"
+            else:
+                heartbeat += 1
+                if heartbeat % 15 == 0: yield ": keepalive\n\n"
+            await asyncio.sleep(1)
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/cases/{case_id}/stats")
+async def case_stats(case_id: str):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    evidence = await asyncio.to_thread(case_store.list_evidence, case_id)
+    jobs = await asyncio.to_thread(case_store.list_jobs, case_id)
+    analysis, _ = await _get_case_analysis(case_id)
+    return {"nodes": len(analysis["nodes"]),
+            "docs": sum(1 for item in evidence if item["status"] == "ingested"),
+            "jurisdictions": 1 if case.get("jurisdiction") else 0,
+            "active_jobs": sum(1 for job in jobs if job["status"] in ("queued", "running")),
+            "graph_revision": case["graph_revision"], "mode": "live" if LIVE else "degraded"}
+
+
+async def _get_case_analysis(case_id: str):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    cached = await asyncio.to_thread(case_store.get_analysis, case_id, case["graph_revision"])
+    if cached: return cached, case
+    evidence = await asyncio.to_thread(case_store.list_evidence, case_id)
+    payload = await asyncio.to_thread(case_analysis.build, case, evidence)
+    await asyncio.to_thread(case_store.save_analysis, case_id, case["graph_revision"], payload)
+    return payload, case
+
+
+async def _case_llm_answer(analysis: dict, instruction: str, question: str) -> str | None:
+    """Compact direct completion for case tools; avoids Cognee session-context retries."""
+    if not LIVE: return None
+    import os, urllib.request
+    endpoint = os.getenv("LLM_ENDPOINT", "http://localhost:11434/v1").rstrip("/")
+    model = os.getenv("LLM_MODEL", "gemma4:e4b")
+    if model.startswith("groq/"): model = model.split("/", 1)[1]
+    facts = {
+        "summary": analysis["summary"],
+        "entities": [{"type": n["type"], "label": n["label"], "role": n.get("role"),
+                      "status": n.get("status"), "sources": n.get("sources", [])}
+                     for n in analysis["nodes"] if n["type"] != "document"][:60],
+        "timeline": analysis["timeline"][:30],
+    }
+    payload = json.dumps({"model": model, "messages": [
+        {"role": "system", "content": "You are an investigative case assistant. Use only the supplied verified case facts. Distinguish facts from hypotheses and never assume guilt."},
+        {"role": "user", "content": f"Task: {instruction}\nQuestion: {question}\nCase facts: {json.dumps(facts)}"},
+    ], "temperature": 0.2, "max_tokens": 800, "stream": False}).encode()
+    headers = {"Content-Type": "application/json"}
+    key = os.getenv("LLM_API_KEY", "")
+    if key: headers["Authorization"] = f"Bearer {key}"
+    def call():
+        request = urllib.request.Request(f"{endpoint}/chat/completions", data=payload, headers=headers)
+        with urllib.request.urlopen(request, timeout=45) as response:
+            data = json.loads(response.read())
+        return data["choices"][0]["message"].get("content") or data["choices"][0]["message"].get("reasoning")
+    try: return await asyncio.to_thread(call)
+    except Exception: return None
+
+
+@app.get("/cases/{case_id}/graph")
+async def case_graph(case_id: str):
+    analysis, case = await _get_case_analysis(case_id)
+    return {**analysis, "contradictions": [], "mode": "live" if LIVE else "derived"}
+
+
+@app.post("/cases/{case_id}/reindex", status_code=202)
+async def case_reindex(case_id: str):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    if not LIVE: raise HTTPException(503, "Cognee/LLM is unavailable; cannot rebuild the knowledge graph.")
+    try: job = await asyncio.to_thread(case_store.queue_reindex, case_id)
+    except ValueError as e: raise HTTPException(409, str(e))
+    return {"ok": True, "job": job}
+
+
+@app.post("/cases/{case_id}/chat")
+async def case_chat(case_id: str, req: ChatReq):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    analysis, _ = await _get_case_analysis(case_id)
+    sources = case_analysis.sources_for_question(analysis, req.message)
+    if not LIVE:
+        return {"answer": case_analysis.answer(analysis, req.message), "sources": sources, "mode": "derived"}
+    history = "\n".join(f"{x.get('role','user')}: {x.get('text','')}" for x in req.history[-4:])
+    answer = await _case_llm_answer(analysis, "Answer the latest question concisely. Conversation is context, not evidence.", f"{history}\n{req.message}")
+    return {"answer": answer or case_analysis.answer(analysis, req.message), "sources": sources, "mode": "live" if answer else "derived"}
+
+
+@app.get("/cases/{case_id}/chat/suggestions")
+async def case_chat_suggestions(case_id: str):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    analysis, _ = await _get_case_analysis(case_id)
+    people = [n["label"] for n in analysis["nodes"] if n["type"] == "person"]
+    fallback = [f"What evidence is connected to {people[0]}?" if people else "What facts are established in this case?", "What does the timeline show?", "Which evidence needs corroboration?"]
+    return {"suggestions": fallback, "mode": "derived"}
+
+
+@app.get("/cases/{case_id}/timeline")
+async def case_timeline(case_id: str):
+    analysis, _ = await _get_case_analysis(case_id)
+    return {"events": analysis["timeline"], "summary": analysis["summary"]}
+
+
+@app.get("/cases/{case_id}/contradictions")
+async def case_contradictions(case_id: str):
+    analysis, _ = await _get_case_analysis(case_id)
+    answer = await _case_llm_answer(analysis, "Identify only evidence-backed contradictions. Say when none can be established.", "What contradictions exist?")
+    return {"contradictions": [], "narrative": answer or f"No deterministic contradiction can be established automatically. {analysis['summary']}", "mode": "live" if answer else "derived"}
+
+
+@app.get("/cases/{case_id}/report")
+async def case_report(case_id: str):
+    analysis, _ = await _get_case_analysis(case_id)
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    answer = await _case_llm_answer(analysis, "Create a concise summary with established facts, contradictions, gaps, and next steps.", "Summarize this case.")
+    return {"title": f"Case Summary — {case['title']}", "sections": [{"heading": "Knowledge graph summary", "content": answer or analysis["summary"]}], "mode": "live" if answer else "derived"}
+
+
+@app.post("/cases/{case_id}/hunch")
+async def case_hunch(case_id: str, req: HunchReq):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    if LIVE: await mem.log_hunch(req.text, session_id=f"{case_id}:{req.session_id}", dataset=case["dataset_name"])
+    return {"ok": True, "mode": "live" if LIVE else "degraded"}
+
+
+@app.post("/cases/{case_id}/resolve")
+async def case_resolve(case_id: str, req: ResolveReq):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    if LIVE: await mem.resolve_case([f"{case_id}:{sid}" for sid in req.session_ids], dataset=case["dataset_name"])
+    return {"ok": True, "mode": "live" if LIVE else "degraded"}
+
+
+@app.post("/cases/{case_id}/interrogation")
+async def case_interrogation(case_id: str, req: InterrogationReq):
+    analysis, _ = await _get_case_analysis(case_id)
+    answer = await _case_llm_answer(analysis, "Suggest evidence-grounded, non-accusatory interview questions and explain which verified fact each tests.", req.suspect_id)
+    facts = case_analysis.answer(analysis, "What is the key evidence?")
+    return {"narrative": answer or f"Start with open questions about {req.suspect_id}, then test the account against verified records. {facts}", "mode": "live" if answer else "derived"}
+
+
+@app.post("/cases/{case_id}/whatif")
+async def case_whatif(case_id: str, req: WhatIfReq):
+    analysis, _ = await _get_case_analysis(case_id)
+    answer = await _case_llm_answer(analysis, "Evaluate the hypothesis without modifying verified evidence. State supporting, conflicting, and missing facts.", req.hypothesis)
+    fallback = f"Hypothesis recorded but not added to verified evidence. Baseline: {analysis['summary']} Review the connected source documents before changing confidence in any claim."
+    return {"hypothesis": req.hypothesis, "narrative": answer or fallback, "mode": "live" if answer else "derived"}
+
+
 @app.get("/health")
 def health():
-    return {"ok": True, "mode": "live" if LIVE else "degraded"}
+    cases = case_store.list_cases()
+    return {
+        "ok": True,
+        "mode": "live" if LIVE else "degraded",
+        "case_count": len(cases),
+        "case_database": case_store.DB_PATH.name,
+        "fallback": FALLBACK_STATE,
+    }
+
+
+async def _get_case_label() -> str:
+    """Resolve the case label shown in the stats ribbon: a manual override (set via
+    POST /case-name) always wins; otherwise, once there's real ingested evidence, ask
+    the LLM for a short label derived from it."""
+    if CASE_LABEL_OVERRIDE:
+        return CASE_LABEL_OVERRIDE
+
+    if not UPLOADED_NODES:
+        return "Daniel Marsh · Millbrook / Riverside"
+
+    if _case_label_cache["upload_count"] == len(UPLOADED_NODES) and _case_label_cache["label"]:
+        return _case_label_cache["label"]
+
+    if LIVE:
+        try:
+            res = await mem.recall(
+                "In 6 words or fewer, give a short case label in the exact format "
+                "'PrimaryName · LocationA / LocationB' (or just 'PrimaryName' if there's "
+                "only one location) based on the suspect/victim and place names in this "
+                "evidence. Return ONLY the label, nothing else — no punctuation-free "
+                "explanation, no quotes.",
+                mode=mem.RecallMode.GRAPH,
+                dataset=DATASET,
+            )
+            label = res.answer.strip().strip('"').split("\n")[0][:80]
+            if label and res.raw is not None:
+                _case_label_cache["label"] = label
+                _case_label_cache["upload_count"] = len(UPLOADED_NODES)
+                return label
+        except Exception:
+            pass
+
+    return f"Untitled Case — {len(UPLOADED_NODES)} file(s) ingested"
+
+
+@app.get("/case-name")
+async def get_case_name():
+    return {"label": await _get_case_label(), "manual": CASE_LABEL_OVERRIDE is not None}
+
+
+class CaseNameBody(BaseModel):
+    label: str | None = None
+
+
+@app.post("/case-name")
+async def set_case_name(body: CaseNameBody):
+    global CASE_LABEL_OVERRIDE
+    CASE_LABEL_OVERRIDE = (body.label or "").strip() or None
+    return {"label": await _get_case_label(), "manual": CASE_LABEL_OVERRIDE is not None}
+
+
+@functools.lru_cache(maxsize=1)
+def hero_case_doc_count() -> int:
+    """Real file count of the pre-loaded hero-case corpus (data/hero_case/*)."""
+    return sum(1 for _ in HERO.glob("*") if _.is_file())
+
+
+@app.get("/stats")
+def stats():
+    # Stats must stay cheap: do not invoke graph recall just to paint the header.
+    graph_payload = mock("graph.json")
+    graph_payload["nodes"].extend(UPLOADED_NODES)
+    nodes = graph_payload.get("nodes", [])
+    jurisdictions = {n["id"] for n in nodes if n.get("type") == "jurisdiction"}
+    return {
+        "nodes": len(nodes),
+        "docs": hero_case_doc_count() + len(UPLOADED_NODES),
+        "jurisdictions": len(jurisdictions),
+        "alibi_break": bool(graph_payload.get("contradictions")),
+        "mode": "live" if LIVE else "degraded",
+    }
+
 
 
 @app.get("/graph")
@@ -363,6 +1139,8 @@ async def graph():
     payload = mock("graph.json")
     payload["nodes"].extend(UPLOADED_NODES)
     payload["mode"] = "degraded"
+    payload["docs_ingested"] = hero_case_doc_count() + len(UPLOADED_NODES)
+    payload["case_label"] = await _get_case_label()
     if LIVE:
         try:
             res = await mem.recall(
@@ -766,9 +1544,46 @@ async def chat(req: ChatReq):
             "sources": ["MH-0102-FOR", "RV-0788-WIT", "MARSH-ALIBI"],
             "mode": "degraded"
         }
-    res = await mem.recall(req.message, mode=mem.RecallMode.GRAPH, dataset=DATASET)
+    recent = req.history[-8:]
+    history = "\n".join(
+        f"{item.get('role', 'user')}: {item.get('text', '')}" for item in recent
+    )
+    query = req.message
+    if history:
+        query = (
+            "Answer the investigator's latest question using the case knowledge graph. "
+            "Use the conversation only to resolve references; do not treat it as evidence.\n\n"
+            f"Conversation:\n{history}\n\nLatest question: {req.message}"
+        )
+    res = await mem.recall(query, mode=mem.RecallMode.GRAPH, dataset=DATASET)
     sources = extract_ids(str(res.raw), known_doc_ids())[:5]
     return {"answer": res.answer, "sources": sources, "mode": "live"}
+
+
+@app.get("/chat/suggestions")
+async def chat_suggestions():
+    fallback = [
+        "What evidence connects incidents across jurisdictions?",
+        "Which claims are contradicted by verified records?",
+        "What important gap should an investigator pursue next?",
+    ]
+    if not LIVE:
+        return {"suggestions": fallback, "mode": "degraded"}
+    try:
+        res = await mem.recall(
+            "Based only on this case graph, propose exactly three concise, useful questions "
+            "an investigator should ask next. Return one question per line, no numbering.",
+            mode=mem.RecallMode.GRAPH,
+            dataset=DATASET,
+        )
+        suggestions = []
+        for line in res.answer.splitlines():
+            cleaned = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip()
+            if cleaned and cleaned.endswith("?"):
+                suggestions.append(cleaned)
+        return {"suggestions": suggestions[:3] or fallback, "mode": "live"}
+    except Exception as e:
+        return {"suggestions": fallback, "mode": "degraded", "error": str(e)}
 
 
 @app.get("/report")
@@ -831,81 +1646,171 @@ async def transcribe_audio_endpoint(file: UploadFile = File(...)):
     return {"text": "Mock: voice input received. In live mode, Whisper transcribes your query.", "mode": "degraded"}
 
 
-@app.post("/ingest-file")
-async def ingest_file(file: UploadFile = File(...)):
-    content = await file.read()
-    fname = file.filename or "unknown"
+async def _extract_upload(content: bytes, fname: str) -> tuple[str, str | None]:
+    """Convert one upload to reviewable text without writing to Cognee."""
     modality = _file_modality(fname)
-    extracted_text = None
     description = None
-
+    extracted_text = ""
     if modality == "image":
-        media_type = _media_type_for(fname)
-        if LIVE:
-            try:
-                description = await describe_image(content, fname, media_type)
-                extracted_text = f"IMAGE EVIDENCE — {fname}\n\nForensic description:\n{description}"
-            except Exception as e:
-                description = f"[Vision analysis failed: {e}]"
-        else:
-            description = "Mock mode: image received. Live mode uses Claude vision to extract a forensic description."
-
+        description = await describe_image(content, fname, _media_type_for(fname))
+        extracted_text = f"IMAGE EVIDENCE — {fname}\n\nForensic description:\n{description}"
     elif modality == "audio":
-        if LIVE:
-            try:
-                transcript = await transcribe_audio(content, fname)
-                description = transcript
-                extracted_text = f"AUDIO TRANSCRIPT — {fname}\n\n{transcript}"
-            except Exception as e:
-                description = f"[Transcription failed: {e}]"
-        else:
-            description = "Mock mode: audio received. Live mode uses Whisper to transcribe and ingest the transcript."
-
+        description = await transcribe_audio(content, fname)
+        extracted_text = f"AUDIO TRANSCRIPT — {fname}\n\n{description}"
     elif modality == "video":
-        if LIVE:
-            try:
-                description = await extract_video_description(content, fname)
-                extracted_text = f"VIDEO EVIDENCE — {fname}\n\nFrame-by-frame forensic analysis:\n{description}"
-            except Exception as e:
-                description = f"[Video analysis failed: {e}]"
-        else:
-            description = "Mock mode: video received. Live mode extracts keyframes and describes each with Claude vision."
-
+        description = await extract_video_description(content, fname)
+        extracted_text = f"VIDEO EVIDENCE — {fname}\n\nFrame-by-frame forensic analysis:\n{description}"
     elif modality == "pdf":
-        if LIVE:
-            try:
-                description = await extract_pdf_content(content, fname)
-                extracted_text = f"PDF DOCUMENT — {fname}\n\n{description}"
-            except Exception as e:
-                description = f"[PDF extraction failed: {e}]"
-        else:
-            description = "Mock mode: PDF received. Live mode extracts text (or uses vision for scanned pages)."
-
+        description = await extract_pdf_content(content, fname)
+        extracted_text = f"PDF DOCUMENT — {fname}\n\n{description}"
     elif modality == "spreadsheet":
         description = await asyncio.to_thread(parse_spreadsheet, content, fname)
         extracted_text = description
-
     else:
         extracted_text = content.decode("utf-8", errors="ignore")
+    return extracted_text, description
 
-    if LIVE and extracted_text:
-        await mem.remember(extracted_text, dataset=DATASET)
 
+@app.post("/ingest-file/analyze")
+async def analyze_ingest_file(file: UploadFile = File(...), context: str = Form("")):
+    content = await file.read()
+    fname = file.filename or "unknown"
+    modality = _file_modality(fname)
+    try:
+        extracted_text, description = await _extract_upload(content, fname)
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(502, f"Evidence analysis failed: {e}")
+    if context.strip():
+        extracted_text = (
+            f"USER-PROVIDED SUBMISSION CONTEXT\n{context.strip()}\n\n"
+            f"MODEL-GENERATED / EXTRACTED CONTENT — REVIEW BEFORE INGESTION\n{extracted_text}"
+        )
+    review_id = secrets.token_urlsafe(18)
+    PENDING_INGESTIONS[review_id] = {
+        "filename": fname, "size_bytes": len(content), "modality": modality,
+        "extracted_text": extracted_text, "context": context.strip(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    return {
+        "ok": True, "review_id": review_id, "filename": fname,
+        "size_bytes": len(content), "type": modality, "description": description,
+        "extracted_text": extracted_text, "context": context.strip(),
+        "requires_confirmation": True, "mode": "live" if LIVE else "degraded",
+    }
+
+
+@app.post("/ingest-files/analyze")
+async def analyze_ingest_files(
+    files: list[UploadFile] = File(...),
+    contexts: str = Form("[]"),
+):
+    """Analyze a batch with per-file results; one bad file never aborts its siblings."""
+    from fastapi import HTTPException
+    try:
+        parsed_contexts = json.loads(contexts)
+    except json.JSONDecodeError as e:
+        raise HTTPException(422, f"contexts must be a JSON array: {e.msg}")
+    if not isinstance(parsed_contexts, list) or len(parsed_contexts) != len(files):
+        raise HTTPException(422, "contexts must contain one string for each file.")
+    semaphore = asyncio.Semaphore(3)
+
+    async def analyze_one(index: int, upload: UploadFile, supplied_context) -> dict:
+        fname = upload.filename or f"file-{index + 1}"
+        context = str(supplied_context or "").strip()
+        modality = _file_modality(fname)
+        try:
+            async with semaphore:
+                content = await upload.read()
+                extracted_text, description = await _extract_upload(content, fname)
+            if context:
+                extracted_text = (
+                    f"USER-PROVIDED SUBMISSION CONTEXT\n{context}\n\n"
+                    f"MODEL-GENERATED / EXTRACTED CONTENT — REVIEW BEFORE INGESTION\n{extracted_text}"
+                )
+            review_id = secrets.token_urlsafe(18)
+            PENDING_INGESTIONS[review_id] = {
+                "filename": fname, "size_bytes": len(content), "modality": modality,
+                "extracted_text": extracted_text, "context": context,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            return {"ok": True, "index": index, "review_id": review_id,
+                    "filename": fname, "size_bytes": len(content), "type": modality,
+                    "description": description, "extracted_text": extracted_text,
+                    "context": context, "requires_confirmation": True}
+        except Exception as e:
+            return {"ok": False, "index": index, "filename": fname,
+                    "error": f"Evidence analysis failed: {e}"}
+
+    results = await asyncio.gather(*(
+        analyze_one(i, upload, parsed_contexts[i]) for i, upload in enumerate(files)
+    ))
+    return {"ok": all(item["ok"] for item in results), "results": results,
+            "mode": "live" if LIVE else "degraded"}
+
+
+@app.post("/ingest-file/confirm")
+async def confirm_ingest_file(req: ConfirmIngestReq):
+    from fastapi import HTTPException
+    pending = PENDING_INGESTIONS.get(req.review_id)
+    if not pending:
+        raise HTTPException(404, "Review not found or already confirmed.")
+    reviewed_text = (req.extracted_text or pending["extracted_text"]).strip()
+    if not reviewed_text:
+        raise HTTPException(422, "Reviewed evidence text cannot be empty.")
+    if req.context and req.context.strip() and req.context.strip() not in reviewed_text:
+        reviewed_text = f"USER-VERIFIED CONTEXT\n{req.context.strip()}\n\n{reviewed_text}"
+    if LIVE:
+        await mem.remember(reviewed_text, dataset=DATASET)
     upload_id = f"evidence:upload-{len(UPLOADED_NODES) + 1}"
     UPLOADED_NODES.append({
         "id": upload_id,
-        "label": fname,
+        "label": pending["filename"],
         "type": "evidence",
-        "modality": modality,
+        "modality": pending["modality"],
     })
-
+    del PENDING_INGESTIONS[req.review_id]
     return {
         "ok": True,
-        "filename": fname,
-        "size_bytes": len(content),
+        "filename": pending["filename"],
+        "size_bytes": pending["size_bytes"],
         "dataset": DATASET,
         "mode": "live" if LIVE else "degraded",
-        "type": modality,
-        "description": description,
+        "type": pending["modality"],
         "graph_node_id": upload_id,
+        "verified": True,
     }
+
+
+@app.post("/ingest-files/confirm")
+async def confirm_ingest_files(req: BatchConfirmIngestReq):
+    """Confirm sequentially because Cognee's embedded graph writer is single-writer."""
+    results = []
+    for index, item in enumerate(req.items):
+        try:
+            result = await confirm_ingest_file(item)
+            results.append({"ok": True, "index": index, **result})
+        except Exception as e:
+            detail = getattr(e, "detail", str(e))
+            results.append({"ok": False, "index": index, "review_id": item.review_id,
+                            "error": detail})
+    return {"ok": all(item["ok"] for item in results), "results": results,
+            "mode": "live" if LIVE else "degraded"}
+
+
+@app.post("/ingest-file")
+async def ingest_file(file: UploadFile = File(...)):
+    """Compatibility route: text files still use analyze + immediate confirmation."""
+    content = await file.read()
+    fname = file.filename or "unknown"
+    if _file_modality(fname) != "text":
+        from fastapi import HTTPException
+        raise HTTPException(409, "Non-text evidence must use analyze and confirm.")
+    extracted_text, _ = await _extract_upload(content, fname)
+    if LIVE and extracted_text:
+        await mem.remember(extracted_text, dataset=DATASET)
+    upload_id = f"evidence:upload-{len(UPLOADED_NODES) + 1}"
+    UPLOADED_NODES.append({"id": upload_id, "label": fname, "type": "evidence", "modality": "text"})
+    return {"ok": True, "filename": fname, "size_bytes": len(content), "dataset": DATASET,
+            "mode": "live" if LIVE else "degraded", "type": "text", "graph_node_id": upload_id,
+            "verified": True}

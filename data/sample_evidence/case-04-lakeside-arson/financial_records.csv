@@ -1,0 +1,6 @@
+date,location,amount,card_last4,notes
+2025-03-19,"9 Harbor Rd, Warehouse District",54.20,9981,"purchase near scene, timestamp overlaps incident window"
+2025-03-19,Local Hardware Store,18.75,9981,"cash purchase, possible link to accelerant-soaked rags and a road-flare ignition source"
+2025-03-19,Gas Station (3mi from scene),40.00,9981,"fuel purchase, ANPR camera hit"
+2025-03-19,ATM Withdrawal,100.00,9981,withdrawal 40 minutes prior to incident window
+2025-03-19,Fast Food Drive-Thru,12.40,9981,"card swipe 1.2 miles from scene, 22:58"
