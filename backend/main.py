@@ -853,7 +853,9 @@ async def case_whatif(case_id: str, req: WhatIfReq):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "mode": "live" if LIVE else "degraded"}
+    cases = case_store.list_cases()
+    return {"ok": True, "mode": "live" if LIVE else "degraded", "case_count": len(cases),
+            "case_database": case_store.DB_PATH.name}
 
 
 @app.get("/stats")

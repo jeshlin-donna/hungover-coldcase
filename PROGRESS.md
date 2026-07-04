@@ -29,6 +29,10 @@ back to this persisted analysis if Cognee/Ollama recall is unavailable.
 Case navigation now opens persisted cases with evidence directly on the Evidence Board; only
 new or genuinely empty cases start in the upload flow.
 
+Case-home reloads no longer flash a false empty state: the UI waits for the database response,
+retries through backend restarts, and shows a cached non-sensitive case summary with an explicit
+reconnecting notice when the backend is temporarily unavailable.
+
 Legend: ✅ done · 🔄 in progress · ⬜ todo
 
 ---

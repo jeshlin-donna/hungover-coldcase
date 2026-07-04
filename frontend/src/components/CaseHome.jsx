@@ -1,16 +1,36 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 
+const CASE_SUMMARY_CACHE = "coldcache_case_summaries_v1";
+
+function cachedCases() {
+  try { return JSON.parse(localStorage.getItem(CASE_SUMMARY_CACHE) || "[]"); }
+  catch { return []; }
+}
+
 export default function CaseHome({ onOpen }) {
-  const [cases, setCases] = useState([]);
+  const [cases, setCases] = useState(cachedCases);
+  const [loading, setLoading] = useState(true);
+  const [usingCache, setUsingCache] = useState(false);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ title: "", reference_number: "", jurisdiction: "", description: "" });
   const [error, setError] = useState("");
 
   async function load() {
-    try { setCases((await api.cases()).cases || []); } catch (e) { setError(e.message); }
+    try {
+      const serverCases = (await api.cases()).cases || [];
+      setCases(serverCases); setError(""); setUsingCache(false);
+      try { localStorage.setItem(CASE_SUMMARY_CACHE, JSON.stringify(serverCases)); } catch { /* storage optional */ }
+    } catch (e) {
+      setError("Case database is temporarily unavailable. Reconnecting…");
+      setUsingCache(cachedCases().length > 0 || cases.length > 0);
+    } finally { setLoading(false); }
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const retry = setInterval(() => { if (document.visibilityState === "visible") load(); }, 2500);
+    return () => clearInterval(retry);
+  }, []);
 
   async function create(event) {
     event.preventDefault(); setError("");
@@ -25,8 +45,9 @@ export default function CaseHome({ onOpen }) {
   return <div className="case-home">
     <div className="case-home-header"><div><div className="header-logo">🔍</div><h1>ColdCache</h1><p>Case memory that survives the browser.</p></div>
       <button className="next-btn" onClick={() => setCreating(true)}>Create case</button></div>
-    {error && <div className="upload-error">{error}</div>}
-    {!creating && cases.length === 0 && <div className="case-empty">
+    {error && <div className={usingCache ? "upload-note" : "upload-error"}>{error}{usingCache ? " Showing the last known case list." : ""}</div>}
+    {loading && cases.length === 0 && <div className="case-empty"><span className="batch-spinner" /><h2>Loading cases…</h2><p>Connecting to the persistent case database.</p></div>}
+    {!loading && !error && !creating && cases.length === 0 && <div className="case-empty">
       <div className="case-empty-icon">📂</div><h2>No cases yet</h2>
       <p>Create a case before importing evidence. Files, reviews, analysis jobs, and the knowledge graph will stay isolated to it.</p>
       <button className="upload-btn" onClick={() => setCreating(true)}>Create your first case</button>
