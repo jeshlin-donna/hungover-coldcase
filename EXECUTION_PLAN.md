@@ -85,7 +85,7 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
 ### Phase 1 — Foundation (DONE)
 - [x] Priority 0 + smoke test passes (cognee 1.2.2 + Ollama gemma4:e4b + nomic-embed-text — all 5 API phases verified)
 - [x] Demo.py live end-to-end passes (all 5 phases)
-- [x] Backend: 15 endpoints implemented (FastAPI, live/degraded mode)
+- [x] Backend: 20 endpoints implemented (FastAPI, live/degraded mode, Groq + Ollama routing)
 - [x] Frontend: 8 panels implemented (dark theme, animations)
 - [x] Blog post + social posts + README written
 
@@ -97,11 +97,13 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
 
 ### Phase 3 — Integration & QA
 - [x] All agents merged + committed
-- [x] Wire frontend to live backend (uvicorn + verify all 15 endpoints respond correctly)
+- [x] Wire frontend to live backend (uvicorn + verify all 20 endpoints respond correctly)
 - [x] Test all 8 panels against live Cognee (not just mock)
 - [x] Test drag-drop ingestion end-to-end (upload new doc → appears in graph)
 - [x] Dry-run demo.py twice on clean state
 - [x] Fix any bugs discovered during integration
+- [x] Swap vision pipeline from Anthropic → local Ollama (llava:7b) + Groq fallback (auto-detected via LLM_ENDPOINT)
+- [x] Unify transcribe_audio for Groq (whisper-large-v3) and local Whisper tiny
 
 ### Phase 4 — Content & Submission prep
 - [ ] Benjy: record 2-min demo video (screen + voiceover)

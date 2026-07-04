@@ -1,6 +1,6 @@
 # ColdCache — Progress Tracker
 
-> **Last updated:** 2026-07-03 — Clean-clone QA passed; full 3-way benchmark remains current
+> **Last updated:** 2026-07-04 — Vision pipeline swapped to Ollama/Groq; all 20 endpoints verified; full 3-way benchmark pending.
 > Detailed plan: `EXECUTION_PLAN.md`
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo
@@ -16,7 +16,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 | **Priority 0 smoke test passes** | Jesh | cognee 1.2.2 + lancedb 0.26.0 + fastembed + Claude key |
 | `data/hero_case/` — 11 synthetic docs | Sam/Jesh | |
 | **`demo/demo.py` live end-to-end passes** | Jesh | All 5 phases. Alibi answer: "card records place Marsh 4.2mi from scene at 00:48" |
-| **Backend — 13 endpoints** | Jesh | /recall /hunch /resolve /expunge /graph /timeline /contradictions /benchmark /missing-hours /nexus /interrogation /whatif /ingest-file |
+| **Backend — 20 endpoints** | Jesh/Sam | /recall /hunch /resolve /expunge /graph /graph/temporal /timeline /contradictions /benchmark /recall/compare /missing-hours /nexus /interrogation /whatif /chat /report /suspect-timeline /transcribe /ingest-file + /health |
 | **Frontend — 8 panels** | Jesh/Benjy | Case Graph · Compare · Timeline · Missing Hours · Nexus · Interrogation · What-If · Upload |
 | GraphPanel — legend, click detail, expunge animation, alibi edges | Jesh | |
 | ComparePanel — 3-col, GRAPH WINS banner, skeleton loader, multi-hop badge | Jesh | |
@@ -41,6 +41,8 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 | Dry-run demo.py twice on clean state | Sam/Jesh | ✅ |
 | Fix any bugs discovered during integration | Sam/Jesh | ✅ |
 | Clean-clone QA test | All | ✅ Fresh venv setup, keyless/degraded API contract, generated corpus, frontend production build, and live 5-phase Cognee smoke test verified from scratch. |
+| **Vision pipeline — Ollama + Groq** | Sam | `describe_image()` and `transcribe_audio()` now auto-route: Groq (detected via `LLM_ENDPOINT`) uses groq SDK (llava vision + whisper-large-v3); Ollama (default) calls `/api/chat` with base64 images. No Anthropic SDK dependency. Configurable via `VISION_MODEL` env var. |
+| **Unified multimodal ingest** | Sam | All 6 modalities (image/audio/video/PDF/spreadsheet/text) fully working with Groq + Ollama. Docs updated: requirements.txt, .env.example, docs/API_NOTES.md, README.md. |
 
 ---
 
@@ -84,7 +86,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 |---|---|---|
 | Potential Impact | Cross-jurisdiction gap is real; expungement = civic | ★★★★★ |
 | Creativity & Innovation | 8 agentic modules, temporal slider, what-if sandbox, interrogation co-pilot | ★★★★★ |
-| Technical Excellence | 3-way benchmark, 13 endpoints, graph schema, async | ★★★★☆ |
+| Technical Excellence | 3-way benchmark (naive done), 20 endpoints, graph schema, async, fully local Ollama vision | ★★★★★ |
 | Best Use of Cognee | All 4 APIs, 3 search modes, session_ids, dataset-level forget | ★★★★★ |
 | User Experience | 8 panels, dark theme, animations, drag-drop, temporal slider | ★★★★★ |
 | Presentation Quality | Blog, social posts, README, demo.py, chart (pending real numbers) | ★★★★☆ |
