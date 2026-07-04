@@ -14,7 +14,7 @@ const FALLBACK_QUESTIONS = [
   "What important gap should an investigator pursue next?",
 ];
 
-export default function ChatPanel() {
+export default function ChatPanel({ caseId }) {
   const [messages, setMessages] = useState([WELCOME_MSG]);
   const [input, setInput] = useState("");
   const [suggestions, setSuggestions] = useState(FALLBACK_QUESTIONS);
@@ -30,10 +30,10 @@ export default function ChatPanel() {
   }, [messages]);
 
   useEffect(() => {
-    api.chatSuggestions().then((data) => {
+    api.chatSuggestions(caseId).then((data) => {
       if (data.suggestions?.length) setSuggestions(data.suggestions);
     }).catch(() => {});
-  }, []);
+  }, [caseId]);
 
   async function sendMessage(text) {
     if (!text.trim() || loading) return;
@@ -45,7 +45,7 @@ export default function ChatPanel() {
     setInput("");
     setLoading(true);
     try {
-      const res = await api.chat(text.trim(), history);
+      const res = await api.chat(text.trim(), history, caseId);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", text: res.answer, sources: res.sources || [] },

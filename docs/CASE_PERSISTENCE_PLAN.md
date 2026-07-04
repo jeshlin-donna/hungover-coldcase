@@ -267,7 +267,7 @@ reversible; delete is visually and operationally separate.
 
 1. ✅ Add application-owned SQLite WAL, schema initialization, repositories, and recovery.
 2. ✅ Add atomic case-scoped file storage and SHA-256.
-3. 🔄 Implement case CRUD/home; backend CRUD is complete, frontend home remains.
+3. ✅ Implement backend case CRUD and blank frontend case home/create/select flow.
 4. Seed Daniel Marsh only through explicit Load demo case action/script.
 
 ### Phase 2 — durable ingestion jobs
@@ -276,11 +276,11 @@ reversible; delete is visually and operationally separate.
 2. 🔄 Durable IDs, startup recovery, retry, and cancel are active; leases/heartbeat remain.
 3. Refactor extractors to emit page/frame/stage checkpoints.
 4. Queue confirmation/cognification and serialize writes per case.
-5. Add SSE/poll fallback and server-rehydrated import queue.
+5. 🔄 Server-rehydrated import queue and polling are active; SSE remains.
 
 ### Phase 3 — case-scope every feature
 
-1. Require `case_id` for all graph, chat, prompt, report, hunch, improve, and delete operations.
+1. 🔄 `case_id` is required for graph, chat, suggestions, stats, and v2 evidence; remaining tools remain.
 2. Replace global `DATASET` use with repository-resolved `dataset_name`.
 3. Add graph revisions and case-scoped caches.
 4. Remove deprecated global routes and fixed Daniel Marsh assumptions.

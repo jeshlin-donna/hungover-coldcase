@@ -5,7 +5,8 @@ import GraphPanel from "./components/GraphPanel.jsx";
 import TimelinePanel from "./components/TimelinePanel.jsx";
 import InterrogationPanel from "./components/InterrogationPanel.jsx";
 import WhatIfPanel from "./components/WhatIfPanel.jsx";
-import UploadPanel from "./components/UploadPanel.jsx";
+import CaseHome from "./components/CaseHome.jsx";
+import CaseImportPanel from "./components/CaseImportPanel.jsx";
 import SuspectTimelinePanel from "./components/SuspectTimelinePanel.jsx";
 
 const MAIN_TABS = [
@@ -63,6 +64,7 @@ const GUIDE_TABS = [MAIN_TABS[0], ...SUB_TABS, CHAT_TAB];
 const GUIDE_SEEN_KEY = "coldcache_guide_seen";
 
 export default function App() {
+  const [activeCase, setActiveCase] = useState(null);
   const [tab, setTab] = useState("upload");
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [mode, setMode] = useState(null);
@@ -94,10 +96,11 @@ export default function App() {
 
   useEffect(() => {
     api.health().then((h) => setMode(h.mode)).catch(() => setMode("offline"));
-    api.stats().then((s) => setStats({
+    if (!activeCase) return;
+    api.caseStats(activeCase.id).then((s) => setStats({
       nodes: s.nodes, docs: s.docs, jurisdictions: s.jurisdictions, alibiBreak: s.alibi_break,
     })).catch(() => {});
-  }, []);
+  }, [activeCase]);
 
   useEffect(() => {
     function onKey(e) {
@@ -156,10 +159,10 @@ export default function App() {
   }
 
   function handleGraphUpdated() {
-    api.stats().then((s) => setStats({
+    api.caseStats(activeCase.id).then((s) => setStats({
       nodes: s.nodes, docs: s.docs, jurisdictions: s.jurisdictions, alibiBreak: s.alibi_break,
     })).catch(() => {});
-    api.graph().then((g) => {
+    api.graph(activeCase.id).then((g) => {
       const prevCount = graphData?.nodes?.length || 0;
       const newCount = g?.nodes?.length || 0;
       setGraphData(g);
@@ -186,6 +189,10 @@ export default function App() {
     navigator.clipboard.writeText(lines.join("\n")).catch(() => {});
   }
 
+  if (!activeCase) {
+    return <CaseHome onOpen={(caseRecord) => { setActiveCase(caseRecord); setWorkspaceOpen(false); setTab("upload"); }} />;
+  }
+
   return (
     <div className="app">
       {toast && (
@@ -197,7 +204,7 @@ export default function App() {
           <div className="header-logo">🔍</div>
           <div className="header-title-group">
             <h1>ColdCache</h1>
-            <span className="header-case-label">A Detective's Case Companion</span>
+            <span className="header-case-label">{activeCase.title}{activeCase.reference_number ? ` · ${activeCase.reference_number}` : ""}</span>
           </div>
 
           {improved && (
@@ -219,6 +226,7 @@ export default function App() {
         <div className="header-right">
           
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button className="btn-improve" onClick={() => { setActiveCase(null); setWorkspaceOpen(false); }} title="Return to case list">All Cases</button>
             <button
               className="btn-improve"
               onClick={() => setShowGuide(true)}
@@ -274,7 +282,7 @@ export default function App() {
 
             <main>
               <div className="tab-panel-fade">
-                <UploadPanel onGraphUpdated={handleGraphUpdated} onNext={handleProceedToWorkspace} />
+                <CaseImportPanel caseId={activeCase.id} onGraphUpdated={handleGraphUpdated} onNext={handleProceedToWorkspace} />
               </div>
             </main>
           </div>
@@ -310,6 +318,7 @@ export default function App() {
                       justImproved={justImproved}
                       graphData={graphData}
                       onGraphLoaded={setGraphData}
+                      caseId={activeCase.id}
                     />
                   )}
                   {tab === "timeline" && <TimelinePanel />}
@@ -321,7 +330,7 @@ export default function App() {
           </div>
 
           <aside className="chat-aside" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <ChatPanel />
+            <ChatPanel caseId={activeCase.id} />
           </aside>
         </div>
       )}

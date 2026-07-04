@@ -97,7 +97,7 @@ function filterGraphByDate(fullGraph, cutoffISO) {
   };
 }
 
-export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
+export default function GraphPanel({ justImproved, graphData, onGraphLoaded, caseId }) {
   const [fullGraph, setFullGraph] = useState({ nodes: [], edges: [], contradictions: [] });
   const [graph, setGraph] = useState({ nodes: [], edges: [], contradictions: [] });
   const [reveal, setReveal] = useState(false);
@@ -115,16 +115,17 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
       setFullGraph(graphData);
       setGraph(graphData);
     } else {
-      api.graph().then((g) => {
+      api.graph(caseId).then((g) => {
         setFullGraph(g);
         setGraph(g);
         onGraphLoaded?.(g);
       }).catch(() => {
-        setFullGraph(MOCK_GRAPH);
-        setGraph(MOCK_GRAPH);
+        const fallback = caseId ? { nodes: [], edges: [], contradictions: [] } : MOCK_GRAPH;
+        setFullGraph(fallback);
+        setGraph(fallback);
       });
     }
-  }, [graphData]);
+  }, [graphData, caseId]);
 
   const sliderDate = monthIndexToDate(sliderIdx);
   const isFiltered = sliderIdx < maxIdx;

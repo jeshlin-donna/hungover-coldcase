@@ -88,12 +88,10 @@ def create_case(payload: dict) -> dict:
 def list_cases() -> list[dict]:
     with connect() as con:
         rows = con.execute("""SELECT c.*,
-          COUNT(DISTINCT e.id) evidence_count,
-          SUM(CASE WHEN j.status IN ('queued','running') THEN 1 ELSE 0 END) active_jobs,
-          SUM(CASE WHEN j.status='failed' THEN 1 ELSE 0 END) failed_jobs
-          FROM cases c LEFT JOIN evidence_items e ON e.case_id=c.id
-          LEFT JOIN jobs j ON j.case_id=c.id
-          GROUP BY c.id ORDER BY c.last_activity_at DESC""").fetchall()
+          (SELECT COUNT(*) FROM evidence_items e WHERE e.case_id=c.id) evidence_count,
+          (SELECT COUNT(*) FROM jobs j WHERE j.case_id=c.id AND j.status IN ('queued','running')) active_jobs,
+          (SELECT COUNT(*) FROM jobs j WHERE j.case_id=c.id AND j.status='failed') failed_jobs
+          FROM cases c ORDER BY c.last_activity_at DESC""").fetchall()
     return [dict(r) for r in rows]
 
 
@@ -167,12 +165,27 @@ def claim_job() -> dict | None:
         if not row: return None
         stamp = now()
         con.execute("UPDATE jobs SET status='running',stage='starting',progress=2,attempt=attempt+1,started_at=COALESCE(started_at,?),updated_at=? WHERE id=? AND status='queued'", (stamp, stamp, row["id"]))
+        evidence_status = "analyzing" if row["kind"] == "analyze" else "ingesting"
+        con.execute("UPDATE evidence_items SET status=?,updated_at=? WHERE id=?", (evidence_status, stamp, row["evidence_id"]))
     return get_job(row["id"])
 
 
 def job_progress(job_id: str, stage: str, progress: int) -> None:
     with connect() as con:
         con.execute("UPDATE jobs SET stage=?,progress=?,updated_at=? WHERE id=?", (stage, progress, now(), job_id))
+
+
+def is_cancel_requested(job_id: str) -> bool:
+    with connect() as con:
+        row = con.execute("SELECT cancel_requested FROM jobs WHERE id=?", (job_id,)).fetchone()
+        return bool(row and row[0])
+
+
+def finish_cancelled(job: dict) -> None:
+    stamp = now()
+    with connect() as con:
+        con.execute("UPDATE evidence_items SET status='cancelled',updated_at=? WHERE id=?", (stamp, job["evidence_id"]))
+        con.execute("UPDATE jobs SET status='cancelled',stage='cancelled',finished_at=?,updated_at=? WHERE id=?", (stamp, stamp, job["id"]))
 
 
 def finish_analysis(job: dict, output: str) -> None:

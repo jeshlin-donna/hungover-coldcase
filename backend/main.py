@@ -462,6 +462,9 @@ async def _durable_job_worker():
                 content = await asyncio.to_thread(case_store.storage_path(item).read_bytes)
                 await asyncio.to_thread(case_store.job_progress, job["id"], f"analyzing_{item['modality']}", 25)
                 output, _ = await _extract_upload(content, item["original_filename"])
+                if await asyncio.to_thread(case_store.is_cancel_requested, job["id"]):
+                    await asyncio.to_thread(case_store.finish_cancelled, job)
+                    continue
                 if item["context"]:
                     output = (f"USER-PROVIDED SUBMISSION CONTEXT\n{item['context']}\n\n"
                               f"MODEL-GENERATED / EXTRACTED CONTENT — REVIEW BEFORE INGESTION\n{output}")
@@ -471,6 +474,9 @@ async def _durable_job_worker():
                 await asyncio.to_thread(case_store.job_progress, job["id"], "staging_cognee", 25)
                 if LIVE:
                     await mem.remember(item["reviewed_text"], dataset=case["dataset_name"])
+                if await asyncio.to_thread(case_store.is_cancel_requested, job["id"]):
+                    await asyncio.to_thread(case_store.finish_cancelled, job)
+                    continue
                 await asyncio.to_thread(case_store.job_progress, job["id"], "indexing_graph", 94)
                 await asyncio.to_thread(case_store.finish_ingestion, job)
         except asyncio.CancelledError:
@@ -589,6 +595,60 @@ async def case_cancel_evidence(case_id: str, evidence_id: str):
 @app.get("/cases/{case_id}/jobs")
 async def case_jobs(case_id: str):
     return {"jobs": await asyncio.to_thread(case_store.list_jobs, case_id)}
+
+
+@app.get("/cases/{case_id}/stats")
+async def case_stats(case_id: str):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    evidence = await asyncio.to_thread(case_store.list_evidence, case_id)
+    jobs = await asyncio.to_thread(case_store.list_jobs, case_id)
+    return {"nodes": sum(1 for item in evidence if item["status"] == "ingested"),
+            "docs": sum(1 for item in evidence if item["status"] == "ingested"),
+            "jurisdictions": 1 if case.get("jurisdiction") else 0,
+            "active_jobs": sum(1 for job in jobs if job["status"] in ("queued", "running")),
+            "graph_revision": case["graph_revision"], "mode": "live" if LIVE else "degraded"}
+
+
+@app.get("/cases/{case_id}/graph")
+async def case_graph(case_id: str):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    evidence = await asyncio.to_thread(case_store.list_evidence, case_id)
+    nodes = [{"id": f"evidence:{item['id']}", "label": item["original_filename"],
+              "type": "evidence", "modality": item["modality"]}
+             for item in evidence if item["status"] == "ingested"]
+    return {"nodes": nodes, "edges": [], "contradictions": [],
+            "graph_revision": case["graph_revision"], "mode": "live" if LIVE else "degraded"}
+
+
+@app.post("/cases/{case_id}/chat")
+async def case_chat(case_id: str, req: ChatReq):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    if not LIVE:
+        return {"answer": "The case knowledge service is in degraded mode. Your evidence remains saved, but an LLM is required for answers.", "sources": [], "mode": "degraded"}
+    history = "\n".join(f"{x.get('role','user')}: {x.get('text','')}" for x in req.history[-8:])
+    query = f"Conversation context (not evidence):\n{history}\n\nLatest question: {req.message}" if history else req.message
+    res = await mem.recall(query, mode=mem.RecallMode.GRAPH, dataset=case["dataset_name"])
+    return {"answer": res.answer, "sources": [], "mode": "live"}
+
+
+@app.get("/cases/{case_id}/chat/suggestions")
+async def case_chat_suggestions(case_id: str):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    fallback = ["What facts are established in this case?", "Which evidence needs corroboration?", "What should be investigated next?"]
+    if not LIVE or case["graph_revision"] == 0: return {"suggestions": fallback, "mode": "degraded"}
+    try:
+        res = await mem.recall("Return exactly three concise investigative questions, one per line.", mode=mem.RecallMode.GRAPH, dataset=case["dataset_name"])
+        lines = [re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip() for line in res.answer.splitlines()]
+        return {"suggestions": [line for line in lines if line.endswith("?")][:3] or fallback, "mode": "live"}
+    except Exception as e: return {"suggestions": fallback, "mode": "degraded", "error": str(e)}
 
 
 @app.get("/health")

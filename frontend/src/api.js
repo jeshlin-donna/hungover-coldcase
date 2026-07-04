@@ -19,9 +19,28 @@ async function post(path, body) {
 }
 
 export const api = {
+  cases: () => get("/cases"),
+  createCase: (payload) => post("/cases", payload),
+  caseDetail: (caseId) => get(`/cases/${caseId}`),
+  caseEvidence: (caseId) => get(`/cases/${caseId}/evidence`),
+  uploadCaseEvidence: (caseId, files, contexts) => {
+    const fd = new FormData();
+    files.forEach((file) => fd.append("files", file));
+    fd.append("contexts", JSON.stringify(contexts));
+    return fetch(`${BASE}/cases/${caseId}/evidence`, { method: "POST", body: fd }).then(async (r) => {
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || `Upload failed (${r.status})`);
+      return data;
+    });
+  },
+  confirmCaseEvidence: (caseId, evidenceId, reviewed_text, context) =>
+    post(`/cases/${caseId}/evidence/${evidenceId}/confirm`, { reviewed_text, context }),
+  retryCaseEvidence: (caseId, evidenceId) => post(`/cases/${caseId}/evidence/${evidenceId}/retry`, {}),
+  cancelCaseEvidence: (caseId, evidenceId) => post(`/cases/${caseId}/evidence/${evidenceId}/cancel`, {}),
   health: () => get("/health"),
   stats: () => get("/stats"),
-  graph: () => get("/graph"),
+  graph: (caseId) => get(caseId ? `/cases/${caseId}/graph` : "/graph"),
+  caseStats: (caseId) => get(`/cases/${caseId}/stats`),
   graphTemporal: (time) => get(`/graph/temporal${time ? `?time=${encodeURIComponent(time)}` : ""}`),
   timeline: () => get("/timeline"),
   contradictions: () => get("/contradictions"),
@@ -72,8 +91,8 @@ export const api = {
     fd.append("file", blob, filename);
     return fetch(`${BASE}/transcribe`, { method: "POST", body: fd }).then((r) => r.json());
   },
-  chat: (message, history) => post("/chat", { message, history }),
-  chatSuggestions: () => get("/chat/suggestions"),
+  chat: (message, history, caseId) => post(caseId ? `/cases/${caseId}/chat` : "/chat", { message, history }),
+  chatSuggestions: (caseId) => get(caseId ? `/cases/${caseId}/chat/suggestions` : "/chat/suggestions"),
   report: () => get("/report"),
   suspectTimeline: (suspect = "daniel-marsh") => get(`/suspect-timeline?suspect=${encodeURIComponent(suspect)}`),
 };

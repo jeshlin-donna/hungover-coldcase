@@ -7,8 +7,10 @@
 
 The persistence foundation is implemented: application-owned SQLite/WAL storage, case CRUD,
 durable original files, evidence/revision/job records, restart recovery, background analysis and
-ingestion, immutable per-case Cognee dataset names, and graph revision tracking. The case-home UI,
-case-scoped tool migration, SSE, caching, and lifecycle hardening remain in progress. Design:
+ingestion, immutable per-case Cognee dataset names, and graph revision tracking. The blank case
+home, case creation, reload-rehydrated import/review queue, retries/cancellation, and case-scoped
+graph/chat/suggestions/stats are now implemented. SSE, remaining tool routes, caching, and lifecycle
+hardening remain in progress. Design:
 [`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md).
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo

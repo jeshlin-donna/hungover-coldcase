@@ -2693,6 +2693,24 @@ input:focus, textarea:focus, select:focus {
   height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #8b5cf6);
   transition: width .45s ease;
 }
+.case-home { min-height: 100vh; max-width: 1040px; margin: 0 auto; padding: 48px 24px; color: var(--text); }
+.case-home-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 36px; }
+.case-home-header > div { display: grid; grid-template-columns: auto 1fr; column-gap: 12px; align-items: center; }
+.case-home-header h1, .case-home-header p { margin: 0; }
+.case-home-header p { grid-column: 2; color: var(--muted); }
+.case-empty, .case-create-form { max-width: 680px; margin: 70px auto; padding: 36px; text-align: center; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+.case-empty-icon { font-size: 48px; }.case-empty p, .case-create-form p { color: var(--muted); }
+.case-create-form { text-align: left; margin-top: 30px; }
+.case-create-form label { display: flex; flex-direction: column; gap: 7px; margin: 14px 0; font-size: 12px; color: var(--muted); }
+.case-create-form input, .case-create-form textarea, .durable-upload-ready textarea { padding: 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--text); font: inherit; }
+.case-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.case-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(260px,1fr)); gap: 14px; }
+.case-card { padding: 20px; text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); cursor: pointer; }
+.case-card:hover { border-color: var(--accent); transform: translateY(-1px); }.case-card h3 { margin: 10px 0 5px; }.case-card p { color: var(--muted); min-height: 20px; }
+.case-card > div { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }.case-card-status { text-transform: uppercase; color: var(--win); font-size: 10px; }
+.muted-copy { color: var(--muted); font-size: 13px; }.durable-upload-ready { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
+.durable-evidence-list { margin-top: 18px; }.durable-import .evidence-review-block .next-btn { margin-top: 10px; }
+@media (max-width: 640px) { .case-form-grid { grid-template-columns: 1fr; }.case-home-header { align-items: flex-start; }.case-home { padding: 24px 14px; } }
 
 /* ── Mobile responsiveness (item 12) ── */
 @media (max-width: 768px) {
