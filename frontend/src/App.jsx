@@ -257,23 +257,23 @@ export default function App() {
       </div>
       )}
 
-      {!workspaceOpen ? (
-        <div className="single-view" style={{ marginTop: 16 }}>
-          <div className="tab-window">
-            <div className="workspace-window-header">
-              <button className="back-to-desk" style={{ cursor: "default", opacity: 0.85 }}>
-                Messy Desk
-              </button>
-            </div>
-
-            <main>
-              <div className="tab-panel-fade">
-                <UploadPanel onGraphUpdated={handleGraphUpdated} onNext={handleProceedToWorkspace} />
-              </div>
-            </main>
+      <div className="single-view" style={{ marginTop: 16, display: workspaceOpen ? "none" : "block" }}>
+        <div className="tab-window">
+          <div className="workspace-window-header">
+            <button className="back-to-desk" style={{ cursor: "default", opacity: 0.85 }}>
+              Messy Desk
+            </button>
           </div>
+
+          <main>
+            <div className="tab-panel-fade">
+              <UploadPanel onGraphUpdated={handleGraphUpdated} onNext={handleProceedToWorkspace} />
+            </div>
+          </main>
         </div>
-      ) : (
+      </div>
+
+      {workspaceOpen && (
         <div className="workspace-split" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1.2fr) minmax(360px, 420px)", gap: 16, marginTop: 16 }}>
           <div>
             <div className="tab-window">
@@ -319,6 +319,7 @@ export default function App() {
           </aside>
         </div>
       )}
+
 
       {showGuide && (
         <div className="report-modal-overlay" onClick={closeGuide}>

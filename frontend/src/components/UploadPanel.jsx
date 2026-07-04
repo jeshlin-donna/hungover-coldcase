@@ -288,6 +288,7 @@ export default function UploadPanel({ onGraphUpdated, onNext }) {
           multiple
           accept={ACCEPTED}
           style={{ display: "none" }}
+          onClick={(e) => e.stopPropagation()}
           onChange={onInputChange}
         />
         <input
@@ -297,6 +298,7 @@ export default function UploadPanel({ onGraphUpdated, onNext }) {
           webkitdirectory="true"
           directory="true"
           style={{ display: "none" }}
+          onClick={(e) => e.stopPropagation()}
           onChange={onInputChange}
         />
 

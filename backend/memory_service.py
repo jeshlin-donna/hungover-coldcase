@@ -200,15 +200,44 @@ async def wait_for_indexing(dataset_ids: list, timeout_s: int = 300) -> None:
 # ---------------------------------------------------------------------------
 # 2. RECALL — query with EXPLICIT mode (this is what powers the 3-way benchmark)
 # ---------------------------------------------------------------------------
+import re as _re
+
+_SECTION_HEADER_RE = _re.compile(r"^\s*#{1,4}\s*(context|answer|reason)\s*$", _re.IGNORECASE | _re.MULTILINE)
+
+
+def _clean_graph_completion_answer(text: str) -> str:
+    """Cognee's GRAPH_COMPLETION search type returns its full internal reasoning trace —
+    a '### Context' block dumping raw graph triples (`` `node` --[edge]--> `node` ``), then
+    '### Answer', then '### Reason'. That whole blob used to get shown to the user verbatim
+    (chat bubbles full of triple-dumps and repeated headers). We only want the '### Answer'
+    section: it's already the clean, self-contained prose answer. Falls back to the raw text
+    untouched if it doesn't look like this templated shape, so plain answers pass through."""
+    if "###" not in text:
+        return text.strip()
+    sections: dict[str, str] = {}
+    matches = list(_SECTION_HEADER_RE.finditer(text))
+    if not matches:
+        return text.strip()
+    for i, m in enumerate(matches):
+        name = m.group(1).lower()
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        sections[name] = text[start:end].strip()
+    answer = sections.get("answer") or sections.get("reason") or ""
+    return answer.strip() or text.strip()
+
+
 def _extract_answer_text(raw: Any) -> str:
     """cognee.search()/recall() return shapes vary (list[str], or list[dict] with a
     'search_result' key holding the real answer text, e.g. [{'dataset_id': ..., 'dataset_name':
     ..., 'search_result': ['actual answer text']}]). Pull the human-readable text out instead
     of falling back to a raw dict repr, which used to leak straight into every endpoint's
     'answer'/'cognee_insight' field (chat, resolve, nexus, interrogation, whatif, report,
-    suspect-timeline, recall, recall_compare all shared this bug)."""
+    suspect-timeline, recall, recall_compare all shared this bug). Also strips Cognee's
+    '### Context / ### Answer / ### Reason' template down to just the answer prose — see
+    _clean_graph_completion_answer."""
     if not isinstance(raw, list):
-        return str(raw)
+        return _clean_graph_completion_answer(str(raw))
     pieces: list[str] = []
     for item in raw:
         if isinstance(item, dict) and "search_result" in item:
@@ -221,7 +250,8 @@ def _extract_answer_text(raw: Any) -> str:
             pieces.append(item)
         else:
             pieces.append(str(item))
-    return "\n".join(pieces) if pieces else str(raw)
+    cleaned = [_clean_graph_completion_answer(p) for p in pieces]
+    return "\n".join(c for c in cleaned if c) if cleaned else _clean_graph_completion_answer(str(raw))
 
 
 RECALL_TIMEOUT_S = float(os.getenv("COLDCACHE_RECALL_TIMEOUT_S", "25"))
@@ -233,7 +263,10 @@ async def recall(query: str, mode: RecallMode = RecallMode.GRAPH,
     if not _cache_disabled:
         cached = _load_cache().get(key)
         if cached is not None:
-            return RecallResult(mode=mode.value, query=query, answer=cached["answer"], raw=cached["answer"])
+            # Re-clean on read too: cache entries written before the Context/Answer/Reason
+            # template fix would otherwise keep serving the old, un-cleaned raw text forever.
+            cleaned = _clean_graph_completion_answer(cached["answer"])
+            return RecallResult(mode=mode.value, query=query, answer=cleaned, raw=cleaned)
 
     if mode == RecallMode.INSIGHTS:
         await prepare_insights(dataset)
