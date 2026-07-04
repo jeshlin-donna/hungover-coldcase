@@ -18,9 +18,11 @@ cases, ~21 files each (105 total), covering all supported formats:
 - **Text notes** are full multi-paragraph incident reports, witness statements, detective
   follow-up notes, evidence logs, case summaries, and anonymous tips — with consistent
   names, badge numbers, case numbers, dates, and cross-references between documents.
-- **Photos** are detailed synthetic scene renders (gradient sky/lighting, textured
-  building facades, forced-entry marks, evidence tent markers, film grain) rather than
-  flat text-on-background cards, so vision models have real visual content to describe.
+- **Photos** are real, freely-licensed photographs (sourced via Openverse/Wikimedia
+  Commons, CC BY / CC BY-SA / CC0 / Public Domain only — see `CREDITS.md`) chosen to
+  match each case's scene type (house exterior/entry, jewelry store, warehouse, office),
+  with a forensic-style case/location caption composited on top — not illustrations,
+  so vision models get genuine photographic content to describe.
 - **Video clips** are CCTV-style renders with timestamp/camera burn-in, film grain, and
   moving person/vehicle silhouettes, exercising real keyframe + vision analysis.
 - **Audio** is **real synthesized speech** (macOS `say` + `afconvert`, not sine tones) —

@@ -1,0 +1,90 @@
+[
+  {
+    "endpoint": "health",
+    "status": 200,
+    "ok": true,
+    "elapsed_s": 0.0,
+    "preview": "{\"ok\": true, \"mode\": \"live\"}"
+  },
+  {
+    "endpoint": "graph",
+    "status": 200,
+    "ok": true,
+    "elapsed_s": 7.8,
+    "preview": "{\"nodes\": [{\"id\": \"jur:maple-heights\", \"label\": \"Maple Heights PD (Clearwater Co.)\", \"type\": \"jurisdiction\"}, {\"id\": \"jur:riverside\", \"label\": \"Riverside PD (Hale Co.)\", \"type\": \"jurisdiction\"}, {\"id\": \"case:MH-0312\", \"label\": \"MH-2023-0312 \\u00b7 2023-03-03\", \"type\": \"case\", \"date\": \"2023-03-03\"}, "
+  },
+  {
+    "endpoint": "graph_temporal",
+    "ok": false,
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+  },
+  {
+    "endpoint": "timeline",
+    "status": 200,
+    "ok": true,
+    "elapsed_s": 0.0,
+    "preview": "{\"events\": [{\"date\": \"2023-03-03\", \"case\": \"MH-2023-0312\", \"jurisdiction\": \"Maple Heights\", \"title\": \"Burglary \\u2014 14 Maple Heights Dr\", \"summary\": \"Rear slider pried, doorbell cam obscured, electronics + small safe taken. Witness: dark blue sedan, partial plate 8K.\"}, {\"date\": \"2023-11-19\", \"cas"
+  },
+  {
+    "endpoint": "contradictions",
+    "ok": false,
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+  },
+  {
+    "endpoint": "missing_hours",
+    "ok": false,
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+  },
+  {
+    "endpoint": "report",
+    "ok": false,
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+  },
+  {
+    "endpoint": "suspect_timeline",
+    "ok": false,
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+  },
+  {
+    "endpoint": "recall_compare",
+    "ok": false,
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+  },
+  {
+    "endpoint": "chat",
+    "ok": false,
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+  },
+  {
+    "endpoint": "recall",
+    "ok": false,
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+  },
+  {
+    "endpoint": "hunch",
+    "status": 200,
+    "ok": true,
+    "elapsed_s": 1.1,
+    "preview": "{\"ok\": true, \"session_id\": \"case-001\"}"
+  },
+  {
+    "endpoint": "resolve",
+    "ok": false,
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+  },
+  {
+    "endpoint": "nexus",
+    "ok": false,
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+  },
+  {
+    "endpoint": "interrogation",
+    "ok": false,
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+  },
+  {
+    "endpoint": "whatif",
+    "ok": false,
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+  }
+]
