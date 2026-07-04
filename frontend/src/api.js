@@ -27,6 +27,7 @@ export const api = {
   createCase: (payload) => post("/cases", payload),
   caseDetail: (caseId) => get(`/cases/${caseId}`),
   caseEvidence: (caseId) => get(`/cases/${caseId}/evidence`),
+  caseJobs: (caseId) => get(`/cases/${caseId}/jobs`),
   caseEventsUrl: (caseId) => `${BASE}/cases/${caseId}/events`,
   uploadCaseEvidence: (caseId, files, contexts) => {
     const fd = new FormData();

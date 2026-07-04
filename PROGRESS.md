@@ -26,7 +26,8 @@ The Evidence Board now uses a provenance-first semantic graph: source documents 
 display nodes, generic `mentions`/`contains`/co-occurrence links are prohibited, and each typed
 relationship exposes its supporting filenames and confidence. Confirmed evidence is wrapped in
 a canonical case/evidence/source record before Cognee extraction. A case-scoped rebuild action
-recreates Cognee from those records and invalidates derived analysis. Case Chat, Interrogation,
+is a durable, reload-safe job that copy-on-write recreates Cognee from those records and
+invalidates derived analysis only after successful activation. Case Chat, Interrogation,
 and What-If fall back to the same persisted analysis if Cognee/Ollama is unavailable.
 
 Case navigation now opens persisted cases with evidence directly on the Evidence Board; only

@@ -293,6 +293,8 @@ provenance, and dated/timed events. Documents are not displayed as knowledge ent
 co-occurrence alone does not produce an edge. Cognee receives canonical confirmed-evidence
 packets carrying stable case/evidence/source identifiers. Cognee graph recall enriches tools when available;
 the persisted analysis provides useful deterministic behavior when the LLM provider is offline.
+Case reindexing uses the same leased job queue as ingestion, so progress rehydrates after reload
+and an interrupted backend retries the deterministic revision dataset rather than orphaning work.
 
 ### Phase 4 — lifecycle hardening
 

@@ -284,6 +284,26 @@ def queue_ingestion(case_id: str, evidence_id: str, reviewed_text: str, context:
     return get_job(job_id)
 
 
+def queue_reindex(case_id: str) -> dict:
+    stamp = now(); job_id = str(uuid.uuid4())
+    with connect() as con:
+        con.execute("BEGIN IMMEDIATE")
+        if not con.execute("SELECT 1 FROM cases WHERE id=?", (case_id,)).fetchone():
+            raise KeyError("Case not found")
+        active = con.execute(
+            "SELECT id FROM jobs WHERE case_id=? AND status IN ('queued','running') ORDER BY created_at LIMIT 1",
+            (case_id,),
+        ).fetchone()
+        if active: raise ValueError("Case already has active work")
+        con.execute(
+            "INSERT INTO jobs (id,case_id,evidence_id,kind,status,stage,progress,created_at,updated_at) "
+            "VALUES (?,?,NULL,'reindex','queued','queued',0,?,?)",
+            (job_id, case_id, stamp, stamp),
+        )
+        _event(con, job_id, case_id, "job.queued", {"kind": "reindex"})
+    return get_job(job_id)
+
+
 def finish_ingestion(job: dict) -> None:
     stamp = now()
     with connect() as con:
@@ -291,6 +311,25 @@ def finish_ingestion(job: dict) -> None:
         con.execute("UPDATE jobs SET status='succeeded',stage='indexed',progress=100,finished_at=?,updated_at=? WHERE id=?", (stamp, stamp, job["id"]))
         con.execute("UPDATE cases SET graph_revision=graph_revision+1,last_activity_at=?,updated_at=? WHERE id=?", (stamp, stamp, job["case_id"]))
         _event(con, job["id"], job["case_id"], "job.succeeded", {"stage": "indexed"})
+
+
+def finish_reindex(job: dict, dataset_name: str) -> dict:
+    """Activate a fully cognified replacement and finish its durable job atomically."""
+    stamp = now()
+    with connect() as con:
+        con.execute("BEGIN IMMEDIATE")
+        changed = con.execute(
+            "UPDATE cases SET dataset_name=?,graph_revision=graph_revision+1,updated_at=?,last_activity_at=? WHERE id=?",
+            (dataset_name, stamp, stamp, job["case_id"]),
+        ).rowcount
+        if not changed: raise KeyError("Case not found")
+        con.execute("DELETE FROM case_analyses WHERE case_id=?", (job["case_id"],))
+        con.execute(
+            "UPDATE jobs SET status='succeeded',stage='indexed',progress=100,finished_at=?,updated_at=? WHERE id=?",
+            (stamp, stamp, job["id"]),
+        )
+        _event(con, job["id"], job["case_id"], "job.succeeded", {"stage": "indexed"})
+    return get_case(job["case_id"])
 
 
 def fail_job(job: dict, message: str) -> None:

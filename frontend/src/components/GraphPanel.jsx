@@ -136,6 +136,40 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
     }
   }, [graphData, caseId]);
 
+  const waitForReindex = useCallback(async (jobId) => {
+    for (;;) {
+      const snapshot = await api.caseJobs(caseId);
+      const job = (snapshot.jobs || []).find((entry) => entry.id === jobId);
+      if (!job) throw new Error("Rebuild job was not found.");
+      setReindexNote(`${job.stage.replaceAll("_", " ")} · ${job.progress}%`);
+      if (job.status === "succeeded") return job;
+      if (job.status === "failed" || job.status === "cancelled") throw new Error(job.error_message || "Knowledge rebuild failed.");
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }, [caseId]);
+
+  useEffect(() => {
+    if (!caseId) return;
+    let cancelled = false;
+    api.caseJobs(caseId).then(async (snapshot) => {
+      const active = (snapshot.jobs || []).find((job) => job.kind === "reindex" && ["queued", "running"].includes(job.status));
+      if (!active || cancelled) return;
+      setReindexing(true);
+      try {
+        await waitForReindex(active.id);
+        if (cancelled) return;
+        const refreshed = await api.graph(caseId);
+        setFullGraph(refreshed); setGraph(refreshed); onGraphLoaded?.(refreshed);
+        setReindexNote("Knowledge graph rebuilt from verified files.");
+      } catch (error) {
+        if (!cancelled) setReindexNote(error.message);
+      } finally {
+        if (!cancelled) setReindexing(false);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [caseId, waitForReindex]);
+
   const sliderDate = monthIndexToDate(sliderIdx);
   const isFiltered = sliderIdx < maxIdx;
 
@@ -256,11 +290,12 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
     setReindexNote("Rebuilding verified case knowledge…");
     try {
       const result = await api.reindexCase(caseId);
+      await waitForReindex(result.job.id);
       const refreshed = await api.graph(caseId);
       setFullGraph(refreshed);
       setGraph(refreshed);
       onGraphLoaded?.(refreshed);
-      setReindexNote(`Knowledge rebuilt from ${result.evidence_count} verified files.`);
+      setReindexNote("Knowledge graph rebuilt from verified files.");
     } catch (error) {
       setReindexNote(error.message || "Knowledge rebuild failed.");
     } finally {

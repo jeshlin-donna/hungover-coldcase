@@ -480,10 +480,27 @@ async def _durable_job_worker():
             await asyncio.sleep(0.75)
             continue
         try:
-            item = await asyncio.to_thread(case_store.get_evidence, job["evidence_id"])
             case = await asyncio.to_thread(case_store.get_case, job["case_id"])
-            if not item or not case:
-                raise RuntimeError("Case or evidence record no longer exists")
+            if not case: raise RuntimeError("Case record no longer exists")
+            if job["kind"] == "reindex":
+                evidence = [item for item in await asyncio.to_thread(case_store.list_evidence, case["id"])
+                            if item["status"] == "ingested" and item["reviewed_text"]]
+                replacement = f"{case['dataset_name'].split('_r')[0]}_r{case['graph_revision'] + 1}_{job['id'][:8]}"
+                await asyncio.to_thread(case_store.job_progress, job["id"], "building_replacement", 15)
+                if LIVE and evidence:
+                    packets = [case_analysis.knowledge_packet(case, item) for item in evidence]
+                    await _with_job_heartbeat(job["id"], mem.remember_many(
+                        packets, dataset=replacement, data_per_batch=1, chunk_size=1200))
+                await asyncio.to_thread(case_store.job_progress, job["id"], "activating_graph", 95)
+                updated = await asyncio.to_thread(case_store.finish_reindex, job, replacement)
+                try:
+                    if LIVE: await mem.expunge(dataset=case["dataset_name"])
+                except Exception:
+                    pass
+                await _get_case_analysis(updated["id"])
+                continue
+            item = await asyncio.to_thread(case_store.get_evidence, job["evidence_id"])
+            if not item: raise RuntimeError("Evidence record no longer exists")
             if job["kind"] == "analyze":
                 await asyncio.to_thread(case_store.job_progress, job["id"], "reading_file", 10)
                 content = await asyncio.to_thread(case_store.storage_path(item).read_bytes)
@@ -785,33 +802,15 @@ async def case_graph(case_id: str):
     return {**analysis, "contradictions": [], "mode": "live" if LIVE else "derived"}
 
 
-@app.post("/cases/{case_id}/reindex")
+@app.post("/cases/{case_id}/reindex", status_code=202)
 async def case_reindex(case_id: str):
     from fastapi import HTTPException
     case = await asyncio.to_thread(case_store.get_case, case_id)
     if not case: raise HTTPException(404, "Case not found.")
     if not LIVE: raise HTTPException(503, "Cognee/LLM is unavailable; cannot rebuild the knowledge graph.")
-    jobs = await asyncio.to_thread(case_store.list_jobs, case_id)
-    if any(job["status"] in ("queued", "running") for job in jobs): raise HTTPException(409, "Wait for active jobs before rebuilding.")
-    evidence = [item for item in await asyncio.to_thread(case_store.list_evidence, case_id)
-                if item["status"] == "ingested" and item["reviewed_text"]]
-    # Build beside the active dataset and switch only after cognify succeeds. This
-    # avoids Cognee 1.2.2's delete-then-add pipeline_status race and means a failed
-    # rebuild can never strand a case without its previous graph.
-    replacement = f"{case['dataset_name'].split('_r')[0]}_r{case['graph_revision'] + 1}_{uuid.uuid4().hex[:8]}"
-    try:
-        if evidence:
-            await mem.remember_many([case_analysis.knowledge_packet(case, item) for item in evidence],
-                                    dataset=replacement, data_per_batch=1, chunk_size=1200)
-    except Exception as e: raise HTTPException(502, f"Cognee rebuild failed: {e}")
-    updated = await asyncio.to_thread(case_store.activate_reindexed_dataset, case_id, replacement)
-    try:
-        await mem.expunge(dataset=case["dataset_name"])
-    except Exception:
-        pass  # replacement is already active; stale-dataset cleanup is non-critical
-    analysis, _ = await _get_case_analysis(case_id)
-    return {"ok": True, "graph_revision": updated["graph_revision"],
-            "evidence_count": len(evidence), "nodes": len(analysis["nodes"]), "edges": len(analysis["edges"])}
+    try: job = await asyncio.to_thread(case_store.queue_reindex, case_id)
+    except ValueError as e: raise HTTPException(409, str(e))
+    return {"ok": True, "job": job}
 
 
 @app.post("/cases/{case_id}/chat")

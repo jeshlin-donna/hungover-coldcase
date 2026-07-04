@@ -101,6 +101,16 @@ class CasePersistenceTests(unittest.TestCase):
         self.assertEqual(self.case["graph_revision"] + 1, updated["graph_revision"])
         self.assertNotEqual(original, updated["dataset_name"])
 
+    def test_reindex_is_a_durable_case_job(self):
+        job = case_store.queue_reindex(self.case["id"])
+        self.assertEqual("reindex", job["kind"])
+        self.assertIsNone(job["evidence_id"])
+        claimed = case_store.claim_job("reindex-worker")
+        case_store.finish_reindex(claimed, "case_replacement")
+        finished = case_store.get_job(job["id"])
+        self.assertEqual("succeeded", finished["status"])
+        self.assertEqual("case_replacement", case_store.get_case(self.case["id"])["dataset_name"])
+
     def test_person_extraction_is_not_demo_name_specific(self):
         text = "Suspect: Avery Quinn\nExaminer: Morgan Lee\nWitness Priya Shah observed the scene."
         item, job = case_store.save_evidence(self.case["id"], "people.txt", text.encode(), "text/plain", "text", "")
