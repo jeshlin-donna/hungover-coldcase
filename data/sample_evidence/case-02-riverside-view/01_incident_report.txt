@@ -1,5 +1,11 @@
-CASE: Riverside View Residential Burglary
-Location: 788 Riverside Ave
-Suspect: Daniel Marsh
+INCIDENT REPORT — Case #RV-2025-0088
+Riverside View Residential Burglary
+Date/Time of Report: 2025-02-11 23:47
+Reporting Officer: Officer J. Alvarado (Badge #3391)
+Location: 788 Riverside Ave, Riverside View
 
-Initial responding officer report. Entry point forced using 8mm left-nick pry blade. Getaway vehicle described as dark blue Honda Accord, partial plate 7XK-2. Scene photographed and processed.
+On 2025-02-11 at approximately 23:47, I responded to a report of a break-in at 788 Riverside Ave, Riverside View. Upon arrival I observed signs of forced entry consistent with the use of an 8mm flathead pry bar with a distinctive left-side nick. Tool-mark impressions were visible on the frame and were photographed and cast for lab comparison.
+
+The property owner/manager, Nguyen Van Phuc, was on scene and reported that several items were missing/disturbed. A vehicle matching the description 'dark blue 2018 Honda Accord, partial plate 7XK-2**' was reported leaving the area shortly before the call came in. Canvassing of the neighborhood/area is ongoing.
+
+Evidence collected at the scene has been logged under case #RV-2025-0088 and forwarded to the forensics unit. This report will be updated as the investigation, led by Det. Lena Ostrowski (Badge #2209), progresses. No suspects have been formally charged at this time; Daniel R. Marsh remains a person of interest based on tool-mark and pattern similarities to related incidents in the area.

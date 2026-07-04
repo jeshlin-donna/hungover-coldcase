@@ -1,4 +1,6 @@
 date,location,amount,card_last4,notes
-2025-02-01,"22 Commerce St, Oakdale",54.20,9981,purchase near scene
-2025-02-02,Local Hardware Store,18.75,9981,possible diamond-tip glass cutter purchase
-2025-02-03,Gas Station,40.00,9981,"fuel, 3mi from scene"
+2025-03-06,"22 Commerce St, Oakdale",54.20,9981,"purchase near scene, timestamp overlaps incident window"
+2025-03-06,Local Hardware Store,18.75,9981,"cash purchase, possible link to a diamond-tip glass cutter and suction lift"
+2025-03-06,Gas Station (3mi from scene),40.00,9981,"fuel purchase, ANPR camera hit"
+2025-03-06,ATM Withdrawal,100.00,9981,withdrawal 40 minutes prior to incident window
+2025-03-06,Fast Food Drive-Thru,12.40,9981,"card swipe 1.2 miles from scene, 22:58"

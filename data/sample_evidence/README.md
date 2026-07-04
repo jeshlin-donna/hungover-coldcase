@@ -14,6 +14,19 @@ cases, ~21 files each (105 total), covering all supported formats:
 | CSV | `.csv` | 2 | pandas spreadsheet parsing |
 | Excel | `.xlsx` | 1 | pandas spreadsheet parsing |
 
+**Content is authored to feel like real case files**, not placeholder text:
+- **Text notes** are full multi-paragraph incident reports, witness statements, detective
+  follow-up notes, evidence logs, case summaries, and anonymous tips — with consistent
+  names, badge numbers, case numbers, dates, and cross-references between documents.
+- **Photos** are detailed synthetic scene renders (gradient sky/lighting, textured
+  building facades, forced-entry marks, evidence tent markers, film grain) rather than
+  flat text-on-background cards, so vision models have real visual content to describe.
+- **Video clips** are CCTV-style renders with timestamp/camera burn-in, film grain, and
+  moving person/vehicle silhouettes, exercising real keyframe + vision analysis.
+- **Audio** is **real synthesized speech** (macOS `say` + `afconvert`, not sine tones) —
+  a witness statement, a 911-style dispatch call, and a detective voice memo per case —
+  so Whisper/Groq transcription has actual spoken content to transcribe.
+
 ## Cases
 
 1. `case-01-millbrook-heights/` — burglary, suspect Daniel Marsh
