@@ -19,6 +19,9 @@ Release hardening completed: ingested evidence removal now performs a safe datas
 review edits use optimistic concurrency; all case tools have case-scoped V2 routes; and the
 backup utility uses SQLite's consistent online backup API.
 
+Timeline, Interrogation Co-Pilot, and What-If are restored in the workspace using their
+case-scoped V2 APIs; they no longer render fixed Daniel Marsh demo content for new cases.
+
 Legend: ✅ done · 🔄 in progress · ⬜ todo
 
 ---

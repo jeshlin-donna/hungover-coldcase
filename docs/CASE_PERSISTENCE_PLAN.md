@@ -283,7 +283,7 @@ reversible; delete is visually and operationally separate.
 1. ✅ Every case tool has a `case_id`-scoped V2 route.
 2. ✅ V2 case routes resolve immutable dataset names server-side.
 3. 🔄 Graph revisions are active; derived response caching remains optional.
-4. 🔄 All tools now have case-scoped routes; deprecated demo routes remain for explicit demo compatibility.
+4. ✅ All workspace tools use case-scoped routes and case-specific UI; deprecated routes remain only for explicit demo compatibility.
 
 ### Phase 4 — lifecycle hardening
 

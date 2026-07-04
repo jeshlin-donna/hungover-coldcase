@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { api } from "./api.js";
 import ChatPanel from "./components/ChatPanel.jsx";
 import GraphPanel from "./components/GraphPanel.jsx";
-import TimelinePanel from "./components/TimelinePanel.jsx";
-import InterrogationPanel from "./components/InterrogationPanel.jsx";
-import WhatIfPanel from "./components/WhatIfPanel.jsx";
+import CaseTimelinePanel from "./components/CaseTimelinePanel.jsx";
+import CaseInterrogationPanel from "./components/CaseInterrogationPanel.jsx";
+import CaseWhatIfPanel from "./components/CaseWhatIfPanel.jsx";
 import CaseHome from "./components/CaseHome.jsx";
 import CaseImportPanel from "./components/CaseImportPanel.jsx";
 import SuspectTimelinePanel from "./components/SuspectTimelinePanel.jsx";
@@ -58,9 +58,7 @@ const SUB_TABS = [
   },
 ];
 
-// New case workspaces expose only tools that are truly case-scoped. The remaining
-// fixed demo panels stay out of navigation until their v2 endpoints are migrated.
-const NAV_TABS = SUB_TABS.filter((tab) => tab.id === "graph");
+const NAV_TABS = SUB_TABS;
 const GUIDE_TABS = [MAIN_TABS[0], ...NAV_TABS, CHAT_TAB];
 
 const GUIDE_SEEN_KEY = "coldcache_guide_seen";
@@ -316,9 +314,9 @@ export default function App() {
                       caseId={activeCase.id}
                     />
                   )}
-                  {tab === "timeline" && <TimelinePanel />}
-                  {tab === "interrogation" && <InterrogationPanel />}
-                  {tab === "whatif" && <WhatIfPanel />}
+                  {tab === "timeline" && <CaseTimelinePanel caseId={activeCase.id} />}
+                  {tab === "interrogation" && <CaseInterrogationPanel caseId={activeCase.id} />}
+                  {tab === "whatif" && <CaseWhatIfPanel caseId={activeCase.id} />}
                 </div>
               </main>
             </div>

@@ -2711,6 +2711,7 @@ input:focus, textarea:focus, select:focus {
 .muted-copy { color: var(--muted); font-size: 13px; }.durable-upload-ready { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
 .durable-evidence-list { margin-top: 18px; }.durable-import .evidence-review-block .next-btn { margin-top: 10px; }
 @media (max-width: 640px) { .case-form-grid { grid-template-columns: 1fr; }.case-home-header { align-items: flex-start; }.case-home { padding: 24px 14px; } }
+.case-event-list { display: grid; gap: 12px; margin-top: 18px; }.case-event-list .incident-card { margin: 0; }
 
 /* ── Mobile responsiveness (item 12) ── */
 @media (max-width: 768px) {
