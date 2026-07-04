@@ -240,8 +240,8 @@ reversible; delete is visually and operationally separate.
 - Generate storage keys; filenames are display data only.
 - Case deletion: mark deleting → settle jobs → Cognee `forget(dataset)` → remove files → retain
   minimal audit tombstone. Failures stay visible and retryable.
-- Evidence-level deletion depends on verified SDK document deletion. Until then, rebuild the case
-  dataset without that evidence or clearly require whole-case deletion.
+- Evidence-level deletion rebuilds the case dataset without the removed evidence when the SDK
+  cannot provide a verified surgical document delete.
 - Keep model output and investigator-confirmed text separate forever.
 
 ## Use-case matrix
@@ -265,14 +265,14 @@ reversible; delete is visually and operationally separate.
 
 ### Phase 1 — persistence foundation
 
-1. ✅ Add application-owned SQLite WAL, schema initialization, repositories, and recovery.
+1. ✅ Add application-owned SQLite WAL, version-tracked schema initialization, repositories, recovery, and backup utility.
 2. ✅ Add atomic case-scoped file storage and SHA-256.
 3. ✅ Implement backend case CRUD and blank frontend case home/create/select flow.
 4. Seed Daniel Marsh only through explicit Load demo case action/script.
 
 ### Phase 2 — durable ingestion jobs
 
-1. 🔄 Durable evidence/revision/job tables are active for v2 routes; legacy collections remain until route migration.
+1. ✅ Durable evidence/revision/job/event tables back every V2 case workflow.
 2. ✅ Durable IDs, leases/heartbeats, startup recovery, guarded retry, and safe cancellation are active.
 3. 🔄 Extractors emit durable stages; page/frame-granular checkpoints remain provider-dependent.
 4. Queue confirmation/cognification and serialize writes per case.
@@ -280,7 +280,7 @@ reversible; delete is visually and operationally separate.
 
 ### Phase 3 — case-scope every feature
 
-1. 🔄 `case_id` is required for graph, chat, suggestions, stats, and v2 evidence; remaining tools remain.
+1. ✅ Every case tool has a `case_id`-scoped V2 route.
 2. ✅ V2 case routes resolve immutable dataset names server-side.
 3. 🔄 Graph revisions are active; derived response caching remains optional.
 4. 🔄 All tools now have case-scoped routes; deprecated demo routes remain for explicit demo compatibility.

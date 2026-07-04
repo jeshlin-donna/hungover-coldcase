@@ -10,6 +10,7 @@ export default function CaseImportPanel({ caseId, onGraphUpdated, onNext }) {
   const [drafts, setDrafts] = useState({});
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [notice, setNotice] = useState("");
   const inputRef = useRef();
   const draftTimers = useRef({});
 
@@ -30,11 +31,12 @@ export default function CaseImportPanel({ caseId, onGraphUpdated, onNext }) {
     events.onerror = () => { /* polling above remains active during reconnects */ };
     return () => events.close();
   }, [caseId]);
+  useEffect(() => () => Object.values(draftTimers.current).forEach(clearTimeout), []);
   const latestJobs = useMemo(() => Object.fromEntries(data.jobs.map((job) => [job.evidence_id, job]).reverse()), [data.jobs]);
 
   async function upload() {
     if (!selected.length) return; setUploading(true); setError("");
-    try { await api.uploadCaseEvidence(caseId, selected, selected.map(() => context)); setSelected([]); setContext(""); await refresh(); }
+    try { const result = await api.uploadCaseEvidence(caseId, selected, selected.map(() => context)); const duplicates = result.results.filter((x) => x.duplicate_skipped).length; setNotice(duplicates ? `${duplicates} duplicate file${duplicates === 1 ? " was" : "s were"} skipped.` : `${result.results.length} file${result.results.length === 1 ? "" : "s"} saved for analysis.`); setSelected([]); setContext(""); await refresh(); }
     catch (e) { setError(e.message); } finally { setUploading(false); }
   }
   async function confirm(item) { try { await api.confirmCaseEvidence(caseId, item.id, drafts[item.id], item.context || ""); await refresh(); } catch (e) { setError(e.message); } }
@@ -58,6 +60,7 @@ export default function CaseImportPanel({ caseId, onGraphUpdated, onNext }) {
       <textarea rows={3} value={context} onChange={(e) => setContext(e.target.value)} placeholder="Optional context applied to these files" />
       <button className="upload-btn" disabled={uploading} onClick={upload}>{uploading ? "Saving files…" : "Save and analyze"}</button></div>}
     {error && <div className="upload-error">{error}</div>}
+    {notice && <div className="upload-note">{notice}</div>}
     <div className="durable-evidence-list">{data.evidence.map((item) => { const job = latestJobs[item.id]; return <div className="batch-file-card" key={item.id}>
       <div className="batch-file-header"><div className="pending-meta"><strong>{item.original_filename}</strong><span className="pending-size">{item.modality} · {item.status.replaceAll("_", " ")}</span></div><span className="batch-status">{item.status.replaceAll("_", " ")}</span></div>
       {job && ["queued", "running"].includes(job.status) && <div className="file-progress-wrap"><div className="file-progress-label"><span>{job.stage.replaceAll("_", " ")}</span><span>{job.progress}%</span></div><div className="file-progress-track"><div className="file-progress-fill" style={{ width: `${job.progress}%` }} /></div></div>}

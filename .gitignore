@@ -7,6 +7,7 @@ data/raw/*
 data/cases/
 data/coldcache.db*
 data/upload_tmp/
+backups/
 .cognee_system/
 cognee_data/
 .cognee_data/

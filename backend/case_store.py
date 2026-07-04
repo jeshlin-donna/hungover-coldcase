@@ -213,6 +213,22 @@ def claim_job(worker_id: str = "worker") -> dict | None:
     return get_job(row["id"])
 
 
+def recover_expired_jobs() -> int:
+    stamp = now()
+    with connect() as con:
+        rows = con.execute("SELECT id,case_id FROM jobs WHERE status='running' AND (lease_expires_at IS NULL OR lease_expires_at < ?)", (stamp,)).fetchall()
+        for row in rows:
+            con.execute("UPDATE jobs SET status='queued',stage='recovering',progress=0,lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE id=?", (stamp, row["id"]))
+            _event(con, row["id"], row["case_id"], "job.recovered", {})
+        return len(rows)
+
+
+def heartbeat(job_id: str) -> None:
+    stamp = now(); lease = (datetime.now(timezone.utc) + timedelta(seconds=45)).isoformat()
+    with connect() as con:
+        con.execute("UPDATE jobs SET heartbeat_at=?,lease_expires_at=?,updated_at=? WHERE id=? AND status='running'", (stamp, lease, stamp, job_id))
+
+
 def job_progress(job_id: str, stage: str, progress: int) -> None:
     with connect() as con:
         stamp = now(); lease = (datetime.now(timezone.utc) + timedelta(seconds=45)).isoformat()

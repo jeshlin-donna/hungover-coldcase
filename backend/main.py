@@ -456,11 +456,25 @@ MAX_BATCH_BYTES = 250 * 1024 * 1024
 _worker_task = None
 
 
+async def _with_job_heartbeat(job_id: str, awaitable):
+    async def pulse():
+        while True:
+            await asyncio.sleep(10)
+            await asyncio.to_thread(case_store.heartbeat, job_id)
+    task = asyncio.create_task(pulse())
+    try: return await awaitable
+    finally:
+        task.cancel()
+        try: await task
+        except asyncio.CancelledError: pass
+
+
 async def _durable_job_worker():
     """Single durable worker; queued/running state survives browser and process restarts."""
     while True:
         job = await asyncio.to_thread(case_store.claim_job)
         if not job:
+            await asyncio.to_thread(case_store.recover_expired_jobs)
             await asyncio.sleep(0.75)
             continue
         try:
@@ -472,7 +486,7 @@ async def _durable_job_worker():
                 await asyncio.to_thread(case_store.job_progress, job["id"], "reading_file", 10)
                 content = await asyncio.to_thread(case_store.storage_path(item).read_bytes)
                 await asyncio.to_thread(case_store.job_progress, job["id"], f"analyzing_{item['modality']}", 25)
-                output, _ = await _extract_upload(content, item["original_filename"])
+                output, _ = await _with_job_heartbeat(job["id"], _extract_upload(content, item["original_filename"]))
                 if await asyncio.to_thread(case_store.is_cancel_requested, job["id"]):
                     await asyncio.to_thread(case_store.finish_cancelled, job)
                     continue
@@ -484,7 +498,7 @@ async def _durable_job_worker():
             elif job["kind"] == "ingest":
                 await asyncio.to_thread(case_store.job_progress, job["id"], "staging_cognee", 25)
                 if LIVE:
-                    await mem.remember(item["reviewed_text"], dataset=case["dataset_name"])
+                    await _with_job_heartbeat(job["id"], mem.remember(item["reviewed_text"], dataset=case["dataset_name"]))
                 await asyncio.to_thread(case_store.job_progress, job["id"], "indexing_graph", 94)
                 await asyncio.to_thread(case_store.finish_ingestion, job)
         except asyncio.CancelledError:
@@ -580,6 +594,11 @@ async def case_upload_evidence(
     case = await asyncio.to_thread(case_store.get_case, case_id)
     if case["status"] == "archived": raise HTTPException(409, "Archived cases are read-only.")
     if len(files) > MAX_FILES_PER_BATCH: raise HTTPException(413, f"At most {MAX_FILES_PER_BATCH} files per batch.")
+    declared_sizes = [getattr(upload, "size", None) for upload in files]
+    if any(size is not None and size > MAX_FILE_BYTES for size in declared_sizes):
+        raise HTTPException(413, "One or more files exceed the 25 MB limit.")
+    if all(size is not None for size in declared_sizes) and sum(declared_sizes) > MAX_BATCH_BYTES:
+        raise HTTPException(413, "Batch exceeds the 250 MB limit.")
     try: parsed = json.loads(contexts)
     except json.JSONDecodeError: raise HTTPException(422, "contexts must be a JSON array.")
     if not isinstance(parsed, list): raise HTTPException(422, "contexts must be a JSON array.")

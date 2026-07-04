@@ -130,6 +130,17 @@ npm run dev
 ```
 Open **http://localhost:5173** — you'll see all 8 panels.
 
+### Backing up persistent cases
+
+```bash
+source .venv/bin/activate
+python scripts/backup_cases.py
+```
+
+This uses SQLite's online backup API and copies case evidence into a timestamped ignored
+`backups/` directory. Stop active ingestion before restoring: replace `data/coldcache.db` and
+`data/cases/` together from the same backup, then restart the backend.
+
 ---
 
 ### Option B — Narrated Demo (terminal walkthrough, no UI needed)

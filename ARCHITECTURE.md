@@ -12,6 +12,11 @@ FastAPI → React UI**, then walks every app feature (tab) and what it calls und
 > demo routes. Remaining tool/lifecycle migration is tracked in
 > [`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md).
 
+The V2 worker uses transactional job claims, renewable 45-second leases, 10-second heartbeats,
+continuous expired-lease recovery, state-guarded retries/confirmation, and append-only replayable
+job events. Uploads are streamed into bounded temporary files and atomically moved into case
+storage after hashing and duplicate checks.
+
 ---
 
 ## 1. High-level system map

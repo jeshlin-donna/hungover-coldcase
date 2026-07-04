@@ -17,14 +17,20 @@ Base URL: `http://localhost:8000`. All responses JSON. CORS open in dev.
 - `POST /cases/{case_id}/evidence` — persist a multipart batch and queue analysis; returns `202`.
 - `GET /cases/{case_id}/evidence` — complete reload snapshot of evidence and jobs.
 - `POST /cases/{case_id}/evidence/{evidence_id}/confirm` — save review revision and queue ingestion.
+- `PATCH /cases/{case_id}/evidence/{evidence_id}/draft` — optimistic, reload-safe review drafts.
 - `POST /cases/{case_id}/evidence/{evidence_id}/retry|cancel` — durable recovery controls.
+- `DELETE /cases/{case_id}/evidence/{evidence_id}` — guarded removal; ingested evidence rebuilds the case dataset.
 - `GET /cases/{case_id}/jobs` — polling/reconciliation snapshot.
-- `GET /cases/{case_id}/events` — SSE `jobs` events with keepalives; polling is the fallback.
+- `GET /cases/{case_id}/events` — replayable SSE events (`Last-Event-ID`/`after`) with polling fallback.
 - `GET /cases/{case_id}/stats|graph|chat/suggestions` and `POST /cases/{case_id}/chat` — isolated case tools.
+- `POST /cases/{case_id}/archive|restore` and `DELETE /cases/{case_id}` — lifecycle controls.
+- Case-scoped `timeline`, `contradictions`, `report`, `hunch`, `resolve`, `interrogation`, and `whatif` routes.
 
 Evidence and job state is stored in application SQLite; original files are stored beneath the
 case ID. Analysis jobs recover to `queued` after an interrupted backend process. Cognee dataset
 names are immutable UUID-derived values held by the server.
+Uploads stream through bounded temporary storage (25 MB/file, 50 files and 250 MB/batch by
+default). SHA-256 duplicates within a case are reported and skipped instead of reprocessed.
 
 ---
 

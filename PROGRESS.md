@@ -12,8 +12,12 @@ home, case creation, reload-rehydrated import/review queue, retries/cancellation
 graph/chat/suggestions/stats plus SSE/poll reconciliation are now implemented. Remaining tool routes, caching, and lifecycle
 hardening now include idempotent state transitions, duplicate skipping, persisted drafts, bounded
 streaming uploads, leases/heartbeats, replayable events, archive/restore, and guarded deletion.
-Evidence-level removal after Cognee ingestion still requires a verified SDK delete or dataset rebuild. Design:
+Evidence-level removal after Cognee ingestion now uses a safe case-dataset rebuild. Design:
 [`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md).
+
+Release hardening completed: ingested evidence removal now performs a safe dataset rebuild;
+review edits use optimistic concurrency; all case tools have case-scoped V2 routes; and the
+backup utility uses SQLite's consistent online backup API.
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo
 
