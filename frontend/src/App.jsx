@@ -189,8 +189,16 @@ export default function App() {
     navigator.clipboard.writeText(lines.join("\n")).catch(() => {});
   }
 
+  function openCase(caseRecord) {
+    const hasEvidence = Number(caseRecord.evidence_count || 0) > 0;
+    setActiveCase(caseRecord);
+    setGraphData(null);
+    setWorkspaceOpen(hasEvidence);
+    setTab(hasEvidence ? "graph" : "upload");
+  }
+
   if (!activeCase) {
-    return <CaseHome onOpen={(caseRecord) => { setActiveCase(caseRecord); setWorkspaceOpen(false); setTab("upload"); }} />;
+    return <CaseHome onOpen={openCase} />;
   }
 
   return (

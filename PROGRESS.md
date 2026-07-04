@@ -26,6 +26,9 @@ Current Riverside View case regenerated at graph revision 11: 24 entity/document
 44 source-backed edges, and 6 timeline events. Case Chat, Interrogation, and What-If now fall
 back to this persisted analysis if Cognee/Ollama recall is unavailable.
 
+Case navigation now opens persisted cases with evidence directly on the Evidence Board; only
+new or genuinely empty cases start in the upload flow.
+
 Legend: ✅ done · 🔄 in progress · ⬜ todo
 
 ---
