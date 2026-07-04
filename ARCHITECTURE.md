@@ -22,6 +22,11 @@ people, evidence, locations, vehicles, provenance edges, and timeline events fro
 Cognee recall remains the preferred reasoning path; this analysis supplies the Evidence Board
 and a source-grounded fallback for Chat, Interrogation, What-If, reports, and suggestions.
 
+Interactive case tools use a compact direct OpenAI-compatible completion over that analysis
+(800-token cap, 45-second timeout), while suggested questions are deterministic. This avoids
+Cognee session-context structured-output retries for simple UI requests; Cognee remains
+responsible for ingestion and graph memory.
+
 ---
 
 ## 1. High-level system map

@@ -749,6 +749,34 @@ async def _get_case_analysis(case_id: str):
     return payload, case
 
 
+async def _case_llm_answer(analysis: dict, instruction: str, question: str) -> str | None:
+    """Compact direct completion for case tools; avoids Cognee session-context retries."""
+    if not LIVE: return None
+    import os, urllib.request
+    endpoint = os.getenv("LLM_ENDPOINT", "http://localhost:11434/v1").rstrip("/")
+    model = os.getenv("LLM_MODEL", "gemma4:e4b")
+    if model.startswith("groq/"): model = model.split("/", 1)[1]
+    facts = {
+        "summary": analysis["summary"],
+        "entities": [{"type": n["type"], "label": n["label"]} for n in analysis["nodes"] if n["type"] != "document"][:60],
+        "timeline": analysis["timeline"][:30],
+    }
+    payload = json.dumps({"model": model, "messages": [
+        {"role": "system", "content": "You are an investigative case assistant. Use only the supplied verified case facts. Distinguish facts from hypotheses and never assume guilt."},
+        {"role": "user", "content": f"Task: {instruction}\nQuestion: {question}\nCase facts: {json.dumps(facts)}"},
+    ], "temperature": 0.2, "max_tokens": 800, "stream": False}).encode()
+    headers = {"Content-Type": "application/json"}
+    key = os.getenv("LLM_API_KEY", "")
+    if key: headers["Authorization"] = f"Bearer {key}"
+    def call():
+        request = urllib.request.Request(f"{endpoint}/chat/completions", data=payload, headers=headers)
+        with urllib.request.urlopen(request, timeout=45) as response:
+            data = json.loads(response.read())
+        return data["choices"][0]["message"].get("content") or data["choices"][0]["message"].get("reasoning")
+    try: return await asyncio.to_thread(call)
+    except Exception: return None
+
+
 @app.get("/cases/{case_id}/graph")
 async def case_graph(case_id: str):
     analysis, case = await _get_case_analysis(case_id)
@@ -763,13 +791,9 @@ async def case_chat(case_id: str, req: ChatReq):
     analysis, _ = await _get_case_analysis(case_id)
     if not LIVE:
         return {"answer": case_analysis.answer(analysis, req.message), "sources": [], "mode": "derived"}
-    history = "\n".join(f"{x.get('role','user')}: {x.get('text','')}" for x in req.history[-8:])
-    query = f"Conversation context (not evidence):\n{history}\n\nLatest question: {req.message}" if history else req.message
-    try:
-        res = await mem.recall(query, mode=mem.RecallMode.GRAPH, dataset=case["dataset_name"])
-        return {"answer": res.answer, "sources": [], "mode": "live"}
-    except Exception as e:
-        return {"answer": case_analysis.answer(analysis, req.message), "sources": [], "mode": "derived", "warning": str(e)}
+    history = "\n".join(f"{x.get('role','user')}: {x.get('text','')}" for x in req.history[-4:])
+    answer = await _case_llm_answer(analysis, "Answer the latest question concisely. Conversation is context, not evidence.", f"{history}\n{req.message}")
+    return {"answer": answer or case_analysis.answer(analysis, req.message), "sources": [], "mode": "live" if answer else "derived"}
 
 
 @app.get("/cases/{case_id}/chat/suggestions")
@@ -780,21 +804,7 @@ async def case_chat_suggestions(case_id: str):
     analysis, _ = await _get_case_analysis(case_id)
     people = [n["label"] for n in analysis["nodes"] if n["type"] == "person"]
     fallback = [f"What evidence is connected to {people[0]}?" if people else "What facts are established in this case?", "What does the timeline show?", "Which evidence needs corroboration?"]
-    if not LIVE or case["graph_revision"] == 0: return {"suggestions": fallback, "mode": "derived"}
-    try:
-        res = await mem.recall("Return exactly three concise investigative questions, one per line.", mode=mem.RecallMode.GRAPH, dataset=case["dataset_name"])
-        lines = [re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip() for line in res.answer.splitlines()]
-        return {"suggestions": [line for line in lines if line.endswith("?")][:3] or fallback, "mode": "live"}
-    except Exception as e: return {"suggestions": fallback, "mode": "derived", "warning": str(e)}
-
-
-async def _case_recall(case_id: str, query: str):
-    from fastapi import HTTPException
-    case = await asyncio.to_thread(case_store.get_case, case_id)
-    if not case: raise HTTPException(404, "Case not found.")
-    if not LIVE: return None, case
-    try: return await mem.recall(query, mode=mem.RecallMode.GRAPH, dataset=case["dataset_name"]), case
-    except Exception: return None, case
+    return {"suggestions": fallback, "mode": "derived"}
 
 
 @app.get("/cases/{case_id}/timeline")
@@ -806,15 +816,16 @@ async def case_timeline(case_id: str):
 @app.get("/cases/{case_id}/contradictions")
 async def case_contradictions(case_id: str):
     analysis, _ = await _get_case_analysis(case_id)
-    res, _ = await _case_recall(case_id, "Identify only evidence-backed contradictions in this case.")
-    return {"contradictions": [], "narrative": res.answer if res else f"No deterministic contradiction can be established automatically. {analysis['summary']}", "mode": "live" if res else "derived"}
+    answer = await _case_llm_answer(analysis, "Identify only evidence-backed contradictions. Say when none can be established.", "What contradictions exist?")
+    return {"contradictions": [], "narrative": answer or f"No deterministic contradiction can be established automatically. {analysis['summary']}", "mode": "live" if answer else "derived"}
 
 
 @app.get("/cases/{case_id}/report")
 async def case_report(case_id: str):
     analysis, _ = await _get_case_analysis(case_id)
-    res, case = await _case_recall(case_id, "Create a concise case summary with established facts, contradictions, gaps, and next steps.")
-    return {"title": f"Case Summary — {case['title']}", "sections": [{"heading": "Knowledge graph summary", "content": res.answer if res else analysis["summary"]}], "mode": "live" if res else "derived"}
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    answer = await _case_llm_answer(analysis, "Create a concise summary with established facts, contradictions, gaps, and next steps.", "Summarize this case.")
+    return {"title": f"Case Summary — {case['title']}", "sections": [{"heading": "Knowledge graph summary", "content": answer or analysis["summary"]}], "mode": "live" if answer else "derived"}
 
 
 @app.post("/cases/{case_id}/hunch")
@@ -838,17 +849,17 @@ async def case_resolve(case_id: str, req: ResolveReq):
 @app.post("/cases/{case_id}/interrogation")
 async def case_interrogation(case_id: str, req: InterrogationReq):
     analysis, _ = await _get_case_analysis(case_id)
-    res, _ = await _case_recall(case_id, f"Suggest evidence-grounded interview questions about {req.suspect_id}. Do not assume guilt.")
+    answer = await _case_llm_answer(analysis, "Suggest evidence-grounded, non-accusatory interview questions and explain which verified fact each tests.", req.suspect_id)
     facts = case_analysis.answer(analysis, "What is the key evidence?")
-    return {"narrative": res.answer if res else f"Start with open questions about {req.suspect_id}, then test the account against verified records. {facts}", "mode": "live" if res else "derived"}
+    return {"narrative": answer or f"Start with open questions about {req.suspect_id}, then test the account against verified records. {facts}", "mode": "live" if answer else "derived"}
 
 
 @app.post("/cases/{case_id}/whatif")
 async def case_whatif(case_id: str, req: WhatIfReq):
     analysis, _ = await _get_case_analysis(case_id)
-    res, _ = await _case_recall(case_id, f"Evaluate this hypothesis without modifying evidence: {req.hypothesis}")
+    answer = await _case_llm_answer(analysis, "Evaluate the hypothesis without modifying verified evidence. State supporting, conflicting, and missing facts.", req.hypothesis)
     fallback = f"Hypothesis recorded but not added to verified evidence. Baseline: {analysis['summary']} Review the connected source documents before changing confidence in any claim."
-    return {"hypothesis": req.hypothesis, "narrative": res.answer if res else fallback, "mode": "live" if res else "derived"}
+    return {"hypothesis": req.hypothesis, "narrative": answer or fallback, "mode": "live" if answer else "derived"}
 
 
 @app.get("/health")

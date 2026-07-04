@@ -33,6 +33,10 @@ Case-home reloads no longer flash a false empty state: the UI waits for the data
 retries through backend restarts, and shows a cached non-sensitive case summary with an explicit
 reconnecting notice when the backend is temporarily unavailable.
 
+Resolved the Gemma/Cognee max-token retry loop triggered by chat suggestions. Suggestions no
+longer invoke structured recall; interactive tools use compact bounded completions and fall back
+to persisted analysis. Local Gemma verification completed in 15.1 seconds without retries.
+
 Legend: ✅ done · 🔄 in progress · ⬜ todo
 
 ---
