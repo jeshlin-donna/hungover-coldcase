@@ -1,0 +1,242 @@
+[
+  {
+    "case": "case-01-millbrook-heights",
+    "file": "evidence_photo_01.jpg",
+    "modality": "image",
+    "ok": true,
+    "elapsed_s": 2.1,
+    "output_preview": "The image, labeled as \"EVIDENCE PHOTO 01 Millbrook Heights Burglary Series,\" appears to be a digital representation or placeholder for an evidence photo rather than an actual image from a crime scene."
+  },
+  {
+    "case": "case-01-millbrook-heights",
+    "file": "audio_statement_01.wav",
+    "modality": "audio",
+    "ok": true,
+    "elapsed_s": 0.98,
+    "output_preview": "you"
+  },
+  {
+    "case": "case-01-millbrook-heights",
+    "file": "forensics_report.pdf",
+    "modality": "pdf",
+    "ok": true,
+    "elapsed_s": 0.09,
+    "output_preview": "[Page 1]\nFORENSICS REPORT \u00b7 Millbrook Heights Burglary Series\nTool-mark analysis: 8mm left-nick pry blade\nSuspect: Daniel Marsh\nExaminer: Lab Unit 4"
+  },
+  {
+    "case": "case-01-millbrook-heights",
+    "file": "financial_records.csv",
+    "modality": "spreadsheet",
+    "ok": true,
+    "elapsed_s": 0.39,
+    "output_preview": "SPREADSHEET EVIDENCE \u2014 financial_records.csv\nColumns: date, location, amount, card_last4, notes\nRows: 3\n\n      date             location  amount  card_last4                                     notes\n2"
+  },
+  {
+    "case": "case-01-millbrook-heights",
+    "file": "01_incident_report.txt",
+    "modality": "text",
+    "ok": true,
+    "elapsed_s": 0.0,
+    "output_preview": "CASE: Millbrook Heights Burglary Series\nLocation: 412 Oakwood Drive\nSuspect: Daniel Marsh\n\nInitial responding officer report. Entry point forced using 8mm left-nick pry blade. Getaway vehicle describe"
+  },
+  {
+    "case": "case-01-millbrook-heights",
+    "file": "cctv_clip_01.mp4",
+    "modality": "video",
+    "ok": true,
+    "elapsed_s": 0.69,
+    "output_preview": "[0.0s into video] The image, labeled \"frame_0.0s.jpg,\" appears to be a single frame from a video file. \n\nThe image is predominantly black, with a small orange square situated on the left side. \n\nIn th"
+  },
+  {
+    "case": "case-02-riverside-view",
+    "file": "evidence_photo_01.jpg",
+    "modality": "image",
+    "ok": true,
+    "elapsed_s": 1.18,
+    "output_preview": "The image provided, labeled as \"evidence_photo_01.jpg,\" appears to be a digital representation or placeholder for an evidence photo rather than the actual photograph. The image is predominantly black "
+  },
+  {
+    "case": "case-02-riverside-view",
+    "file": "audio_statement_01.wav",
+    "modality": "audio",
+    "ok": true,
+    "elapsed_s": 0.27,
+    "output_preview": "you"
+  },
+  {
+    "case": "case-02-riverside-view",
+    "file": "forensics_report.pdf",
+    "modality": "pdf",
+    "ok": true,
+    "elapsed_s": 0.01,
+    "output_preview": "[Page 1]\nFORENSICS REPORT \u00b7 Riverside View Residential Burglary\nTool-mark analysis: 8mm left-nick pry blade\nSuspect: Daniel Marsh\nExaminer: Lab Unit 4"
+  },
+  {
+    "case": "case-02-riverside-view",
+    "file": "financial_records.csv",
+    "modality": "spreadsheet",
+    "ok": true,
+    "elapsed_s": 0.01,
+    "output_preview": "SPREADSHEET EVIDENCE \u2014 financial_records.csv\nColumns: date, location, amount, card_last4, notes\nRows: 3\n\n      date             location  amount  card_last4                                     notes\n2"
+  },
+  {
+    "case": "case-02-riverside-view",
+    "file": "01_incident_report.txt",
+    "modality": "text",
+    "ok": true,
+    "elapsed_s": 0.0,
+    "output_preview": "CASE: Riverside View Residential Burglary\nLocation: 788 Riverside Ave\nSuspect: Daniel Marsh\n\nInitial responding officer report. Entry point forced using 8mm left-nick pry blade. Getaway vehicle descri"
+  },
+  {
+    "case": "case-02-riverside-view",
+    "file": "cctv_clip_01.mp4",
+    "modality": "video",
+    "ok": true,
+    "elapsed_s": 1.55,
+    "output_preview": "[0.0s into video] The image, labeled \"frame_0.0s.jpg,\" appears to be a single frame from a video, likely extracted for closer examination in a cold case investigation.\n\n**Visual Content:**\n\n- The imag"
+  },
+  {
+    "case": "case-03-oakdale-jewelry",
+    "file": "evidence_photo_01.jpg",
+    "modality": "image",
+    "ok": true,
+    "elapsed_s": 1.02,
+    "output_preview": "The image, labeled \"EVIDENCE PHOTO 01: Oakdale Jewelry Store Heist,\" appears to be a digital placeholder or template for evidence documentation rather than an actual photograph of a crime scene or evi"
+  },
+  {
+    "case": "case-03-oakdale-jewelry",
+    "file": "audio_statement_01.wav",
+    "modality": "audio",
+    "ok": true,
+    "elapsed_s": 0.26,
+    "output_preview": "you"
+  },
+  {
+    "case": "case-03-oakdale-jewelry",
+    "file": "forensics_report.pdf",
+    "modality": "pdf",
+    "ok": true,
+    "elapsed_s": 0.0,
+    "output_preview": "[Page 1]\nFORENSICS REPORT \u00b7 Oakdale Jewelry Store Heist\nTool-mark analysis: diamond-tip glass cutter\nSuspect: Renata Kovic\nExaminer: Lab Unit 4"
+  },
+  {
+    "case": "case-03-oakdale-jewelry",
+    "file": "financial_records.csv",
+    "modality": "spreadsheet",
+    "ok": true,
+    "elapsed_s": 0.0,
+    "output_preview": "SPREADSHEET EVIDENCE \u2014 financial_records.csv\nColumns: date, location, amount, card_last4, notes\nRows: 3\n\n      date                location  amount  card_last4                                      not"
+  },
+  {
+    "case": "case-03-oakdale-jewelry",
+    "file": "01_incident_report.txt",
+    "modality": "text",
+    "ok": true,
+    "elapsed_s": 0.0,
+    "output_preview": "CASE: Oakdale Jewelry Store Heist\nLocation: 22 Commerce St, Oakdale\nSuspect: Renata Kovic\n\nInitial responding officer report. Entry point forced using diamond-tip glass cutter. Getaway vehicle describ"
+  },
+  {
+    "case": "case-03-oakdale-jewelry",
+    "file": "cctv_clip_01.mp4",
+    "modality": "video",
+    "ok": true,
+    "elapsed_s": 1.37,
+    "output_preview": "[0.0s into video] The image, labeled \"frame_0.0s.jpg,\" appears to be a single frame from a video, likely surveillance footage, given the filename and the text in the upper-left corner reading \"CAM1 ca"
+  },
+  {
+    "case": "case-04-lakeside-arson",
+    "file": "evidence_photo_01.jpg",
+    "modality": "image",
+    "ok": true,
+    "elapsed_s": 1.33,
+    "output_preview": "The image, labeled \"EVIDENCE PHOTO Lakeside Warehouse Arson,\" appears to be a placeholder or a template for evidence documentation rather than an actual photograph of a scene or evidence. \n\n### Forens"
+  },
+  {
+    "case": "case-04-lakeside-arson",
+    "file": "audio_statement_01.wav",
+    "modality": "audio",
+    "ok": true,
+    "elapsed_s": 0.4,
+    "output_preview": "you"
+  },
+  {
+    "case": "case-04-lakeside-arson",
+    "file": "forensics_report.pdf",
+    "modality": "pdf",
+    "ok": true,
+    "elapsed_s": 0.01,
+    "output_preview": "[Page 1]\nFORENSICS REPORT \u00b7 Lakeside Warehouse Arson\nTool-mark analysis: accelerant-soaked rags, road flare ignition\nSuspect: Miguel Torres\nExaminer: Lab Unit 4"
+  },
+  {
+    "case": "case-04-lakeside-arson",
+    "file": "financial_records.csv",
+    "modality": "spreadsheet",
+    "ok": true,
+    "elapsed_s": 0.01,
+    "output_preview": "SPREADSHEET EVIDENCE \u2014 financial_records.csv\nColumns: date, location, amount, card_last4, notes\nRows: 3\n\n      date                       location  amount  card_last4                                  "
+  },
+  {
+    "case": "case-04-lakeside-arson",
+    "file": "01_incident_report.txt",
+    "modality": "text",
+    "ok": true,
+    "elapsed_s": 0.0,
+    "output_preview": "CASE: Lakeside Warehouse Arson\nLocation: 9 Harbor Rd Warehouse District\nSuspect: Miguel Torres\n\nInitial responding officer report. Entry point forced using accelerant-soaked rags, road flare ignition."
+  },
+  {
+    "case": "case-04-lakeside-arson",
+    "file": "cctv_clip_01.mp4",
+    "modality": "video",
+    "ok": true,
+    "elapsed_s": 1.32,
+    "output_preview": "[0.0s into video] The image \"frame_0.0s.jpg\" appears to be a single frame from a video, likely surveillance footage, given the filename and the text in the upper-left corner that reads \"CAM1 case-04-l"
+  },
+  {
+    "case": "case-05-harborview-fraud",
+    "file": "evidence_photo_01.jpg",
+    "modality": "image",
+    "ok": true,
+    "elapsed_s": 0.63,
+    "output_preview": "The image, labeled \"evidence_photo_01.jpg,\" appears to be a text-based graphic rather than a photographic image. \n\nThe image contains a thin white-lined box with the following information written insi"
+  },
+  {
+    "case": "case-05-harborview-fraud",
+    "file": "audio_statement_01.wav",
+    "modality": "audio",
+    "ok": true,
+    "elapsed_s": 0.2,
+    "output_preview": "you"
+  },
+  {
+    "case": "case-05-harborview-fraud",
+    "file": "forensics_report.pdf",
+    "modality": "pdf",
+    "ok": true,
+    "elapsed_s": 0.0,
+    "output_preview": "[Page 1]\nFORENSICS REPORT \u00b7 Harborview Insurance Fraud Ring\nTool-mark analysis: forged inspection reports\nSuspect: Priya Anand\nExaminer: Lab Unit 4"
+  },
+  {
+    "case": "case-05-harborview-fraud",
+    "file": "financial_records.csv",
+    "modality": "spreadsheet",
+    "ok": true,
+    "elapsed_s": 0.0,
+    "output_preview": "SPREADSHEET EVIDENCE \u2014 financial_records.csv\nColumns: date, location, amount, card_last4, notes\nRows: 3\n\n      date             location  amount  card_last4                                       notes"
+  },
+  {
+    "case": "case-05-harborview-fraud",
+    "file": "01_incident_report.txt",
+    "modality": "text",
+    "ok": true,
+    "elapsed_s": 0.0,
+    "output_preview": "CASE: Harborview Insurance Fraud Ring\nLocation: 14 Bayfront Plaza\nSuspect: Priya Anand\n\nInitial responding officer report. Entry point forced using forged inspection reports. Getaway vehicle described"
+  },
+  {
+    "case": "case-05-harborview-fraud",
+    "file": "cctv_clip_01.mp4",
+    "modality": "video",
+    "ok": true,
+    "elapsed_s": 5.19,
+    "output_preview": "[0.0s into video] The image, labeled \"frame_0.0s.jpg,\" appears to be a single frame from a video, likely a surveillance video given the filename and the text in the upper-left corner reading \"CAM1 cas"
+  }
+]
