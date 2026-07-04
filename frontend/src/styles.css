@@ -1653,28 +1653,74 @@ footer {
 }
 
 /* ── Upload Panel ── */
-.upload-panel { padding: 24px; }
-.upload-title { margin: 0 0 6px; font-size: 20px; }
+.upload-panel {
+  padding: 28px 26px 24px;
+  position: relative;
+  background:
+    radial-gradient(ellipse 500px 200px at 15% 0%, rgba(227,179,65,0.05), transparent 60%),
+    repeating-linear-gradient(125deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px),
+    linear-gradient(160deg, #16130f 0%, #100e0a 55%, #0c0a08 100%);
+  border-color: #2a2018;
+  overflow: hidden;
+}
+.upload-panel::before {
+  /* corkboard-style vignette so the "desk" reads as a distinct surface from the rest of the app */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 90px rgba(0,0,0,0.55);
+  border-radius: inherit;
+}
+.upload-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  position: relative;
+  display: inline-block;
+  padding: 6px 18px 6px 14px;
+  color: #f3e4c4;
+  background: linear-gradient(135deg, #3a2f1e 0%, #241d12 100%);
+  border: 1px solid #4a3c24;
+  border-left: 4px solid var(--gold);
+  border-radius: 3px 10px 10px 3px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.04) inset;
+  transform: rotate(-0.6deg);
+}
 
 .drop-zone {
-  border: 2px dashed var(--line);
-  border-radius: 14px;
-  padding: 48px 24px;
+  border: 2px dashed #4a3c24;
+  border-radius: 10px;
+  padding: 44px 24px;
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
+  transition: border-color 0.2s, background 0.2s, transform 0.2s;
   margin-bottom: 24px;
-  background: var(--bg);
+  background: linear-gradient(160deg, #221c12 0%, #191509 100%);
   min-height: 160px;
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
 }
-.drop-zone:hover { border-color: var(--accent); background: rgba(88,166,255,0.04); }
+.drop-zone::before {
+  /* a strip of "washi tape" pinning the evidence bag to the desk */
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-2deg);
+  width: 90px;
+  height: 22px;
+  background: rgba(227,179,65,0.28);
+  border: 1px solid rgba(227,179,65,0.35);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.drop-zone:hover { border-color: var(--gold); background: linear-gradient(160deg, #262010 0%, #1c1710 100%); transform: translateY(-1px); }
 .drop-zone.drag-over {
-  border-color: var(--accent);
-  background: rgba(88,166,255,0.08);
-  box-shadow: 0 0 0 4px rgba(88,166,255,0.12);
+  border-color: var(--gold);
+  background: rgba(227,179,65,0.08);
+  box-shadow: 0 0 0 4px rgba(227,179,65,0.14), 0 6px 18px rgba(0,0,0,0.35);
 }
 
 .drop-zone-inner { display: flex; flex-direction: column; align-items: center; gap: 10px; }
@@ -1734,18 +1780,27 @@ footer {
 .dismiss-btn:disabled { opacity: 0.45; }
 
 .ingested-section { margin-bottom: 24px; }
-.ingested-title { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; font-size: 11px; }
+.ingested-title {
+  margin: 0 0 12px;
+  font-weight: 700;
+  color: #c9a86a;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+}
 .ingested-list { display: flex; flex-direction: column; gap: 8px; }
 
 .ingested-file {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  background: linear-gradient(160deg, #1b160f 0%, #14100b 100%);
+  border: 1px solid #382c1c;
+  border-radius: 4px;
   padding: 10px 14px;
   animation: fadeIn 0.3s ease;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
 }
 .ingested-check { color: var(--win); font-size: 16px; flex-shrink: 0; }
 .ingested-info { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -1816,16 +1871,27 @@ footer {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--panel);
-  border: 1px solid var(--line);
+  background: linear-gradient(160deg, #1c1712 0%, #171310 100%);
+  border: 1px solid #3a2f20;
   border-left-width: 3px;
   border-left-style: solid;
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 9px 12px;
-  transition: background 0.2s, opacity 0.2s;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s, border-color 0.2s, transform 0.15s;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
 }
-.queue-item--uploading { background: rgba(88,166,255,0.06); }
-.queue-item--error { background: rgba(248,113,113,0.06); }
+.queue-item:nth-child(odd) { transform: rotate(-0.4deg); }
+.queue-item:nth-child(even) { transform: rotate(0.4deg); }
+.queue-item:hover { background: #221c15; transform: rotate(0deg) translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+.queue-item--expanded {
+  background: #221c15;
+  border-color: var(--accent);
+  transform: rotate(0deg);
+  box-shadow: 0 0 0 1px rgba(61,155,255,0.25), 0 4px 12px rgba(0,0,0,0.4);
+}
+.queue-item--uploading { background: rgba(88,166,255,0.08); }
+.queue-item--error { background: rgba(248,113,113,0.08); }
 .queue-spinner {
   font-size: 11px;
   color: var(--accent);
@@ -1844,6 +1910,111 @@ footer {
 @keyframes pulse {
   0%, 100% { opacity: 0.55; }
   50% { opacity: 1; }
+}
+
+/* ── Expanded queue-item preview (shows below "Ready to ingest") ── */
+.expanded-preview-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 0 1px rgba(61,155,255,0.15), 0 8px 28px rgba(0,0,0,0.35);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  margin-bottom: 16px;
+  animation: fadeIn 0.2s ease;
+}
+.expanded-preview-image {
+  max-width: 100%;
+  max-height: 420px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  object-fit: contain;
+}
+.expanded-preview-video {
+  max-width: 100%;
+  max-height: 420px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #000;
+}
+.expanded-preview-audio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 24px 12px;
+}
+.expanded-preview-audio-icon { font-size: 48px; line-height: 1; }
+.expanded-preview-audio-player { width: 100%; max-width: 420px; }
+.expanded-preview-doc {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 12px;
+}
+.expanded-preview-doc-icon { font-size: 48px; line-height: 1; }
+.expanded-preview-doc-name { font-size: 14px; font-weight: 600; color: var(--text); }
+.expanded-preview-close {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.expanded-preview-close:hover { color: var(--text); border-color: var(--accent); }
+
+/* ── Per-item upload progress ── */
+.item-progress-track {
+  margin-top: 6px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+.item-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #7ab8ff);
+  border-radius: 2px;
+  transition: width 0.15s ease;
+}
+.item-progress-fill--indeterminate {
+  width: 40% !important;
+  animation: indeterminateSlide 1.1s ease-in-out infinite;
+}
+@keyframes indeterminateSlide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
+/* ── Overall queue progress ── */
+.overall-progress { margin-top: 14px; }
+.overall-progress-label {
+  font-size: 11px;
+  color: var(--text-2);
+  margin-bottom: 6px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.overall-progress-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line-soft);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.overall-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--win), #6ee7b7);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 10px rgba(63,185,80,0.4);
 }
 
 .upload-note {
