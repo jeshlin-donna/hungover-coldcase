@@ -242,8 +242,8 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
   // the tight center cluster is visible in a mostly-empty canvas.
   useEffect(() => {
     if (!data.nodes.length) return;
-    fgRef.current?.d3Force("charge")?.strength(-220);
-    fgRef.current?.d3Force("link")?.distance(70);
+    fgRef.current?.d3Force("charge")?.strength(-320);
+    fgRef.current?.d3Force("link")?.distance(120);
     const id = setTimeout(() => {
       fgRef.current?.zoomToFit(400, 60);
     }, 300);
@@ -320,6 +320,13 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
         </p>
       )}
 
+      {fullGraph.cognee_insight && (
+        <div className="cognee-insight-box">
+          <span className="cognee-insight-label">Cognee graph insight (TRIPLET_COMPLETION)</span>
+          <p className="cognee-insight-text">{fullGraph.cognee_insight}</p>
+        </div>
+      )}
+
       <div className="graph-wrap">
         <ForceGraph2D
           ref={fgRef}
@@ -346,6 +353,43 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
           linkDirectionalParticleColor={(l) => (l._c ? "#f85149" : "#58a6ff")}
           linkDirectionalArrowLength={4}
           linkDirectionalArrowRelPos={1}
+          linkCanvasObjectMode={() => "after"}
+          linkCanvasObject={(link, ctx, globalScale) => {
+            const nodes = fgRef.current?.graphData?.()?.nodes || data.nodes;
+            const start = typeof link.source === "object" ? link.source : nodes.find((n) => n.id === link.source);
+            const end = typeof link.target === "object" ? link.target : nodes.find((n) => n.id === link.target);
+            if (!start || !end || start.x == null || end.x == null) return;
+            const label = link.relation || link.label || "";
+            if (!label) return;
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (!dist) return;
+            const midX = start.x + dx * 0.5;
+            const midY = start.y + dy * 0.5;
+            let angle = Math.atan2(dy, dx);
+            const offset = 10 / globalScale;
+            const textX = midX + Math.sin(angle) * offset;
+            const textY = midY - Math.cos(angle) * offset;
+            const fontSize = Math.max(6 / globalScale, 5);
+            if (angle > Math.PI / 2) angle -= Math.PI;
+            if (angle < -Math.PI / 2) angle += Math.PI;
+            ctx.save();
+            ctx.translate(textX, textY);
+            ctx.rotate(angle);
+            ctx.font = `${fontSize}px ui-sans-serif,system-ui,sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const textWidth = ctx.measureText(label).width;
+            ctx.fillStyle = "rgba(16,16,24,0.92)";
+            ctx.fillRect(-textWidth / 2 - 4, -fontSize / 2 - 3, textWidth + 8, fontSize + 6);
+            ctx.fillStyle = "rgba(248,248,248,0.98)";
+            ctx.fillText(label, 0, 0);
+            ctx.strokeStyle = "rgba(0,0,0,0.4)";
+            ctx.lineWidth = Math.max(1 / globalScale, 0.5);
+            ctx.strokeText(label, 0, 0);
+            ctx.restore();
+          }}
           backgroundColor="#090d13"
           onNodeClick={handleNodeClick}
           onNodeHover={handleNodeHover}
