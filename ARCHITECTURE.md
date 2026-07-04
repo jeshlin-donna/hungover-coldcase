@@ -1,397 +1,332 @@
 # ColdCache Architecture — How Everything Actually Works
 
-This document is the deep-dive companion to `README.md`. It traces one continuous path
-through the system: **raw file → preprocessing → knowledge graph → Cognee retrieval →
-FastAPI → React UI**, then walks every app feature (tab) and what it calls underneath.
+This document describes the **current merged repo**. The important architectural fact is that
+ColdCache now has **two coexisting backends in one FastAPI app**:
 
-> Scope note: this describes the code as written in this repo. Where the app can run
-> without a live LLM key ("DEGRADED mode"), that fallback is called out explicitly.
+1. a **primary case-scoped workspace** used by the current frontend
+2. a **legacy/global demo surface** retained for benchmark, mock-server parity, and the narrated demo
 
-> V2 migration: durable case workspaces, resumable ingestion jobs, per-case Cognee datasets,
-> reload-safe REST/SSE state, and a blank case home are now implemented alongside the legacy
-> demo routes. Remaining tool/lifecycle migration is tracked in
-> [`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md).
-
-The V2 worker uses transactional job claims, renewable 45-second leases, 10-second heartbeats,
-continuous expired-lease recovery, state-guarded retries/confirmation, and append-only replayable
-job events. Uploads are streamed into bounded temporary files and atomically moved into case
-storage after hashing and duplicate checks.
-
-Case tools read a persisted analysis keyed by `case_id + graph_revision`. It extracts typed
-people, evidence, locations, vehicles, provenance edges, and timeline events from confirmed text.
-Cognee recall remains the preferred reasoning path; this analysis supplies the Evidence Board
-and a source-grounded fallback for Chat, Interrogation, What-If, reports, and suggestions.
-
-Interactive case tools use a compact direct OpenAI-compatible completion over that analysis
-(800-token cap, 45-second timeout), while suggested questions are deterministic. This avoids
-Cognee session-context structured-output retries for simple UI requests; Cognee remains
-responsible for ingestion and graph memory.
+> Scope note: this document describes the code as it exists now, not the pre-merge plan.
 
 ---
 
 ## 1. High-level system map
 
+```text
+React case UI (frontend/src/App.jsx)
+  ├─ CaseHome
+  ├─ CaseImportPanel
+  ├─ GraphPanel
+  ├─ CaseTimelinePanel
+  ├─ CaseInterrogationPanel
+  ├─ CaseWhatIfPanel
+  └─ ChatPanel
+          │
+          │ REST + SSE
+          ▼
+FastAPI (backend/main.py)
+  ├─ /cases*                       current app API
+  ├─ /health                       mode + fallback state
+  ├─ /graph /recall /report ...    legacy/global demo API
+  ├─ multimodal extractors
+  └─ durable job worker
+          │
+          ├─ application SQLite + file store (backend/case_store.py)
+          │    ├─ data/coldcache.db
+          │    └─ data/cases/<case_id>/...
+          │
+          ├─ persisted derived analysis (backend/case_analysis.py)
+          │
+          └─ Cognee wrapper (backend/memory_service.py)
+               ├─ remember / cognify
+               ├─ recall / search
+               ├─ improve
+               └─ forget
 ```
-┌─────────────────────────┐     ┌──────────────────────────┐     ┌───────────────────────┐
-│   Data sources           │     │  backend/main.py (FastAPI)│     │ frontend/ (React+Vite)│
-│  data/hero_case/*.md     │────▶│  LIVE  or DEGRADED mode   │◀───▶│  App.jsx + 11 tab      │
-│  data/raw/*.txt          │     │  routes: /recall /graph   │     │  panels + api.js       │
-│  UploadPanel uploads     │     │  /hunch /resolve /expunge │     └───────────────────────┘
-└─────────────────────────┘     │  /nexus /whatif ...        │
-                                  └────────────┬──────────────┘
-                                               │ calls
-                                               ▼
-                                  ┌──────────────────────────┐
-                                  │ backend/memory_service.py │  <- the ONLY module that
-                                  │  remember / recall /      │     touches the Cognee SDK
-                                  │  improve / forget          │
-                                  └────────────┬──────────────┘
-                                               │ cognee.add/cognify/search/improve/forget
-                                               ▼
-                                  ┌──────────────────────────┐
-                                  │        Cognee SDK          │
-                                  │  LLM extraction (schema.py)│
-                                  │  Graph DB (Kuzu, default)  │
-                                  │  Vector DB (LanceDB)       │
-                                  │  Relational/meta (SQLite)  │
-                                  └──────────────────────────┘
-```
-
-Two things make this app resilient for a live demo:
-
-* **`memory_service.py` is the single choke point** for every Cognee call. Nothing else in
-  the codebase imports `cognee` directly (except the multimodal helpers in `main.py` that
-  call Anthropic/Whisper/etc. *before* handing text to `memory_service.remember()`).
-* **`main.py` auto-detects LIVE vs DEGRADED** at import time (`backend/main.py:187-197`):
-  if `LLM_API_KEY` is set and `memory_service` imports cleanly, `LIVE = True` and every
-  route does real Cognee calls. Otherwise every route falls back to curated JSON fixtures
-  in `frontend/mock/*.json`, so the UI never crashes even with zero setup. `GET /health`
-  reports which mode is active and the frontend badge (`App.jsx`) shows it live.
 
 ---
 
-## 2. Data sources — what goes in
+## 2. Current data model
 
-| Source | Location | Purpose |
+### 2.1 Durable case workspace
+
+The current frontend is case-scoped. Each case has:
+- metadata in `cases`
+- uploaded evidence in `evidence_items`
+- immutable review history in `evidence_revisions`
+- analysis/ingestion/reindex jobs in `jobs`
+- replayable progress events in `job_events`
+- cached derived analysis in `case_analyses`
+
+All of this is application-owned in `backend/case_store.py`, not delegated to Cognee.
+
+### 2.2 Per-case Cognee dataset
+
+Each case gets an immutable dataset name of the form:
+```text
+case_<uuid_without_dashes>
+```
+
+The UI never chooses dataset names directly; `backend/main.py` resolves them server-side from `case_id`.
+
+### 2.3 Legacy/global dataset
+
+The benchmark, narrated demo, and older global routes still use:
+```text
+coldcases
+```
+
+That dataset is populated by `scripts/ingest.py` and is separate from the current case database/UI.
+
+---
+
+## 3. Ingestion pipeline — current case workflow
+
+### 3.1 Upload and durable staging
+
+`POST /cases/{case_id}/evidence`:
+1. streams each upload into a bounded temp file under `data/upload_tmp/`
+2. hashes while streaming
+3. enforces size/count limits
+4. atomically moves the file into `data/cases/<case_id>/originals/`
+5. inserts `evidence_items` + an `analyze` job in SQLite
+6. returns immediately with durable IDs
+
+Duplicates are detected by SHA-256 **within the same case** and returned as `duplicate_skipped: true`.
+
+### 3.2 Background analysis
+
+A startup worker in `backend/main.py` continuously:
+- claims queued jobs transactionally
+- assigns a 45s renewable lease
+- heartbeats while running
+- emits append-only `job_events`
+- recovers expired `running` jobs back to `queued`
+
+### 3.3 Review and confirmed ingestion
+
+After analysis, evidence enters `awaiting_review`.
+
+The investigator can:
+- edit `reviewed_text`
+- save optimistic drafts via `PATCH /cases/{case_id}/evidence/{evidence_id}/draft`
+- confirm via `POST /cases/{case_id}/evidence/{evidence_id}/confirm`
+
+Confirmed content is wrapped by `case_analysis.knowledge_packet()` before Cognee sees it, so the packet includes:
+- `CASE_ID`
+- `EVIDENCE_ID`
+- source filename
+- modality
+- investigator context
+- reviewed text
+- provenance instructions
+
+### 3.4 `remember()` / `cognify()` path
+
+`backend/memory_service.py` still exposes the Cognee lifecycle through:
+- `remember()` → `cognee.add()` + `cognify()`
+- `cognify()` → typed extraction with `ColdCaseGraph`
+
+If Groq-backed extraction fails, ColdCache retries against local Ollama. If typed local extraction also fails, it drops to untyped extraction rather than hard-failing the ingest.
+
+---
+
+## 4. Query pipeline — current case workflow
+
+### 4.1 Persisted derived analysis
+
+Current case tools do **not** rely exclusively on Cognee high-level completions.
+
+`backend/case_analysis.py` builds and caches a deterministic, source-grounded analysis per:
+```text
+(case_id, graph_revision)
+```
+
+It extracts:
+- people
+- locations
+- vehicles
+- evidence items
+- typed edges with filename provenance
+- dated/timed events for the timeline
+
+This payload powers:
+- `GET /cases/{id}/graph`
+- `GET /cases/{id}/timeline`
+- fallback answers for chat/interrogation/what-if/report
+- deterministic suggestions
+
+### 4.2 Direct case-tool completion
+
+For current case tools, `backend/main.py` uses `_case_llm_answer()` — a compact OpenAI-compatible completion over the persisted analysis, not a raw high-level Cognee completion.
+
+Why:
+- faster than Cognee's session-context wrappers for simple UI tasks
+- bounded (`max_tokens=800`, `timeout=45`)
+- degrades cleanly to deterministic answers when no live provider is available
+
+### 4.3 Cognee recall fallback
+
+`backend/memory_service.py` still powers legacy/global recall and any direct Cognee lookups.
+
+`recall()` now:
+- maps app modes to `SearchType`
+- detects hard Groq failures
+- also detects degraded replies like `"Got it."`
+- swaps Cognee's global LLM config to local Ollama
+- retries once
+- restores the original config afterward
+
+This is serialized behind a lock because Cognee's LLM config is global.
+
+---
+
+## 5. Multimodal extraction pipeline (`backend/main.py`)
+
+| Modality | Extractor | Current behavior |
 |---|---|---|
-| **Hero case** | `data/hero_case/*.md` | Hand-authored synthetic case files (narratives, forensics, witness statements, financial/alibi records) for the Daniel Marsh cold-case storyline. Each file has a `DOC_ID: XXX` header used everywhere downstream (source attribution, benchmark scoring). |
-| **Noise corpus** | `data/raw/*.txt` | 250 synthetic, unrelated incident reports generated by `scripts/generate_corpus.py`, deliberately *excluding* the hero case's signature details (tool marks, vehicle, suspect name, addresses). This is what makes the multi-hop benchmark meaningful — the graph has to find the real signal inside realistic noise. |
-| **Live uploads** | `UploadPanel` → `POST /ingest-file` | Ad-hoc files (text/image/audio/video/PDF/spreadsheet) dropped by a user during a session; converted to text and ingested the same way as the above. |
+| Image | `describe_image()` | Groq vision → local Ollama vision → Claude last resort |
+| Audio | `transcribe_audio()` | Groq Whisper → local Whisper |
+| Video | `extract_video_description()` | frame sampling + image extractor |
+| PDF | `extract_pdf_content()` | text extraction; scanned pages go through image extractor |
+| Spreadsheet | `parse_spreadsheet()` | `pandas` summary |
+| Text | direct decode | passthrough |
 
-`data/hero_case/00_README_hero_case.md` documents the actual narrative embedded in the
-hero docs (three burglaries, two departments, ~23-month gap, tool-mark match, alibi
-contradicted by a motel receipt) — that's the "story" every panel in the UI is built to
-surface.
-
-### 2.1 Generating the noise corpus
-
-`scripts/generate_corpus.py` (seeded with `random.seed(42)` for reproducibility) procedurally
-builds 250 incident reports across 4 types (residential burglary, car theft, vandalism,
-commercial burglary) using pools of streets/cities/departments/MOs/vehicles/items. It
-deliberately reuses some MOs across ~60 incidents ("cross-reference" noise) but never the
-hero signature (8mm pry blade w/ left-edge nick, dark blue 2015-2018 Honda Accord, "Daniel
-Marsh", or the hero addresses) — this is the negative-control set for the benchmark.
-
-Run: `python scripts/generate_corpus.py` → writes `data/raw/incident_XXX.txt`.
+The important post-merge nuance: multimodal extraction now tries hard **not to fail closed** when Groq is unavailable.
 
 ---
 
-## 3. Ingestion pipeline — `scripts/ingest.py`
+## 6. Health and fallback reporting
 
-```
-python scripts/ingest.py [--reset] [--hero-only]
-```
+`GET /health` now returns:
+- backend mode: `live` or `degraded`
+- persistent case count
+- case DB filename
+- fallback state:
+  - `active`
+  - `last_reason`
+  - `last_at`
 
-1. `--reset` (optional): calls `memory_service.reset_all()` → `cognee.prune.prune_data()` +
-   `prune_system()` to wipe the graph/vector/relational stores clean.
-2. Collects hero-case `.md` files (skipping `00_README...`) and, unless `--hero-only`, all
-   `data/raw/*` files.
-3. For every file: reads text, skips empty files, calls `memory_service.remember(text,
-   dataset="coldcases")`.
-4. Prints a per-file OK/ERR log and a final summary.
-
-### 3.1 What `remember()` actually does (`backend/memory_service.py:81-105`)
-
-```python
-async def remember(text, dataset="coldcases"):
-    await cognee.add(text, dataset_name=dataset)   # stage raw text into the dataset
-    await cognify(dataset)                          # build/refresh the graph
-```
-
-* **`cognee.add()`** stores the raw text as a document under the named dataset — this is
-  Cognee's ingestion/staging step (chunking + document bookkeeping happens here).
-* **`cognify()`** is where the knowledge graph is actually built. This repo calls it with
-  a **typed schema**, not Cognee's free-form default:
-
-```python
-await cognee.cognify(
-    datasets=[dataset],
-    graph_model=ColdCaseGraph,              # backend/schema.py
-    custom_prompt=COLD_CASE_EXTRACTION_PROMPT,
-)
-```
-
-Both calls are synchronous by default (`run_in_background=False`), so by the time
-`remember()` returns, the graph for that document is already built and queryable —
-no polling needed at this corpus's scale. (`wait_for_indexing()` exists for the
-large-corpus/background-ingest path but isn't used by default.)
+This reflects real Groq→local fallback activity from `backend/main.py` / `backend/memory_service.py`.
 
 ---
 
-## 4. Preprocessing by modality (`backend/main.py`)
+## 7. The two API surfaces
 
-Before text ever reaches `memory_service.remember()`, non-text uploads are converted to
-text by modality-specific extractors. This powers the "Import Case Files and Data" tab.
+### 7.1 Primary current app API
 
-| Modality | Extensions | Extractor | Technique |
-|---|---|---|---|
-| Image | `.jpg .jpeg .png .gif .webp` | `describe_image()` | Sends base64 image to **Claude (claude-haiku-4-5)** vision with a forensic-description prompt (people, vehicles, plates, locations, timestamps). Returns a text description. |
-| Audio | `.mp3 .wav .m4a .ogg .aac` | `transcribe_audio()` | Local **OpenAI Whisper "tiny"** model transcribes to text (fully offline, no API key). |
-| Video | `.mp4 .mov .avi .webm` | `extract_video_description()` | **OpenCV** samples ~1 frame/10s (max 5 frames), each frame piped through `describe_image()` (Claude vision), descriptions stitched with timestamps. |
-| PDF | `.pdf` | `extract_pdf_content()` | **PyMuPDF (fitz)** extracts text per page; pages with no extractable text (scanned images) are rendered to a JPEG at 150 DPI and sent through `describe_image()` (OCR-by-vision fallback). |
-| Spreadsheet | `.xlsx .xls .csv` | `parse_spreadsheet()` | **pandas** loads the sheet, serializes columns + up to 500 rows into a structured text block. |
-| Everything else | `.txt .md` etc. | passthrough | Raw UTF-8 decode. |
+Used by the current frontend:
+- `/cases`
+- `/cases/{case_id}`
+- `/cases/{case_id}/evidence`
+- `/cases/{case_id}/jobs`
+- `/cases/{case_id}/events`
+- `/cases/{case_id}/stats`
+- `/cases/{case_id}/graph`
+- `/cases/{case_id}/reindex`
+- `/cases/{case_id}/chat`
+- `/cases/{case_id}/chat/suggestions`
+- `/cases/{case_id}/timeline`
+- `/cases/{case_id}/contradictions`
+- `/cases/{case_id}/report`
+- `/cases/{case_id}/hunch`
+- `/cases/{case_id}/resolve`
+- `/cases/{case_id}/interrogation`
+- `/cases/{case_id}/whatif`
 
-Each extractor returns reviewable text. For durable cases, an investigator confirms or edits it
-before ingestion. `case_analysis.knowledge_packet()` then wraps that content with immutable
-`CASE_ID`, `EVIDENCE_ID`, filename, modality, optional context, and a provenance rule before
-`memory_service.remember()` is called. Thus every modality becomes confirmed, attributable text
-before Cognee; Cognee never sees raw bytes or an unconfirmed model description.
+### 7.2 Legacy/global API
 
-Case reindexing is copy-on-write: a new revision-named Cognee dataset is fully cognified first,
-then the case's dataset pointer and graph revision change in one SQLite transaction. A provider
-failure leaves the active dataset untouched; stale-dataset cleanup happens only after activation.
-Each extractor degrades gracefully (returns an explanatory string) if its optional
-dependency (`whisper`, `opencv-python-headless`, `pymupdf`, `pandas`) isn't installed, or
-if `LIVE` is false.
+Still present in `backend/main.py` for demo/benchmark compatibility:
+- `/graph`, `/graph/temporal`, `/stats`, `/case-name`
+- `/timeline`, `/contradictions`, `/benchmark`
+- `/recall/compare`, `/recall`, `/hunch`, `/resolve`, `/expunge`
+- `/missing-hours`, `/nexus`, `/interrogation`, `/whatif`
+- `/chat`, `/chat/suggestions`, `/report`, `/suspect-timeline`
+- `/transcribe`, `/ingest-file/analyze`, `/ingest-files/analyze`, `/ingest-file/confirm`, `/ingest-files/confirm`, `/ingest-file`
 
----
-
-## 5. The knowledge graph schema — `backend/schema.py`
-
-Cognee's `cognify()` accepts an optional `graph_model` (a Pydantic model the extraction
-LLM is function-called against) and `custom_prompt`. By default Cognee uses a free-form
-`KnowledgeGraph` with arbitrary string node/edge types. This repo **subclasses** Cognee's
-own `Node`, `Edge`, and `KnowledgeGraph` (not independent models — Cognee's internal graph
-tasks do `isinstance()` checks, so a parallel schema would break deep in the pipeline) and
-narrows their types with `Literal`s:
-
-**Node types** (`ColdCaseNode.type`): `Person | Location | TimePoint | Evidence | Object`
-— with optional type-specific fields: `role`/`status` (Person), `coordinates` (Location),
-`timestamp`/`raw_label` (TimePoint), `evidence_type`/`reliability_score` (Evidence),
-`category` (Object).
-
-**Edge types** (`ColdCaseEdge.relationship_name`):
-* `WAS_AT` — Person → Location
-* `AT_TIME` — Location → TimePoint
-* `DEPICTS` — Evidence → Person | Object | Location
-* `REPORTED_BY` — Evidence → Person (claim lineage)
-* `CONTRADICTS` — Evidence → Evidence (machine-flagged conflict)
-
-`COLD_CASE_EXTRACTION_PROMPT` is the natural-language instruction paired with this schema,
-telling the extraction LLM exactly which node/edge vocabulary to use and what to capture
-per type (e.g. "capture role Suspect/Witness/Victim for every Person"; "don't invent facts
-not in the source text"). This constrains the LLM's structured-extraction output to the
-Cold Case Connector ontology instead of arbitrary entity/relation labels — the whole point
-being that unrelated case files can still be merged into one coherent, typed graph.
-
-This is additive: passing no `graph_model` falls back to Cognee's default schema, so any
-existing dataset ingested without it is unaffected.
+The merged frontend mainly uses the first set.
 
 ---
 
-## 6. How Cognee stores and serves the graph
+## 8. Reindexing and deletion behavior
 
-Per `.env.example` / `requirements.txt`, Cognee is configured (by default, embedded/local):
+### 8.1 Case reindex
 
-* **Graph database**: Kuzu (embedded graph DB) — stores the typed nodes/edges from §5.
-* **Vector database**: LanceDB — stores embeddings of chunks/entities for vector search.
-  (`fastembed` runs local embeddings so no OpenAI key is required just for embedding.)
-* **Relational/metadata store**: SQLite — dataset bookkeeping, pipeline run status, etc.
-* **LLM provider**: configurable via `.env` — OpenAI, Anthropic-compatible custom
-  endpoints, Groq (hosted Llama via `litellm`, note the required `groq/` model prefix), or
-  local Ollama. This is the model that does structured extraction during `cognify()` and
-  answer synthesis during `search()`.
-* A Postgres/pgvector path is available (`asyncpg`, `pgvector` in `requirements.txt`) as a
-  documented workaround for a known embedded-LanceDB concurrency bug on some machines
-  (`.env.example` comments) — set `ENABLE_BACKEND_ACCESS_CONTROL=false`, since Cognee's
-  multi-tenant mode otherwise silently forces embedded LanceDB regardless of the
-  `VECTOR_DB_PROVIDER` setting.
+`POST /cases/{case_id}/reindex` creates a durable `reindex` job that:
+- builds a replacement dataset from confirmed evidence
+- only activates it after success
+- bumps `graph_revision`
+- invalidates cached derived analysis atomically
 
-All of this lives behind the SDK — the app code never talks to Kuzu/LanceDB/SQLite
-directly, only to `cognee.*` functions.
+### 8.2 Evidence deletion
 
----
+Deleting already-ingested evidence is handled safely:
+- non-ingested evidence is deleted directly
+- ingested evidence triggers a case dataset rebuild path rather than a brittle surgical delete
 
-## 7. The four Cognee lifecycle calls (`backend/memory_service.py`)
+### 8.3 Case deletion
 
-Every interaction with Cognee funnels through exactly these four operations (also
-showcased live in the **"Cognee APIs" tab / `CogneePanel.jsx`**, which shows the real code
-snippet next to a "Run" button for each):
-
-### `remember()` — ingest
-```python
-await cognee.add(text, dataset_name=dataset)
-await cognee.cognify(datasets=[dataset], graph_model=ColdCaseGraph, custom_prompt=...)
-```
-Used for every case file, upload, and corpus doc (§3).
-
-### `recall()` — query, with an explicit retrieval mode
-```python
-class RecallMode(str, Enum):
-    GRAPH = "graph"        # -> SearchType.GRAPH_COMPLETION   (multi-hop graph traversal)
-    VECTOR = "vector"      # -> SearchType.RAG_COMPLETION     (Cognee's vector RAG)
-    INSIGHTS = "insights"  # -> SearchType.TRIPLET_COMPLETION (raw relationship triples;
-                           #    this Cognee version has no INSIGHTS enum member, so
-                           #    TRIPLET_COMPLETION is used as the closest equivalent)
-
-raw = await cognee.search(query_text=query, query_type=st, datasets=[dataset])
-```
-This explicit mode selection is what powers the **Graph vs Vector benchmark/compare tab**
-— same query, three retrievers, side by side. Results (`list[RecallResponse]`) are
-stringified defensively into a `RecallResult(mode, query, answer, raw)`.
-
-### `improve()` — merge session hunches into permanent memory
-```python
-# mid-investigation: log a hunch to SESSION memory only
-await cognee.remember(text, session_id=session_id, self_improvement=False)
-
-# on case resolution: bridge those hunches into the permanent graph
-await cognee.improve(dataset=dataset, session_ids=session_ids)
-```
-This models a detective's working notes staying provisional until the case resolves, at
-which point `improve()` re-weights/merges them into the permanent graph. The "⚡ Improve"
-button in the header (`App.jsx: handleImprove`) calls `POST /resolve`, which invokes this,
-and displays a mocked recall@3 metric uplift (0.42 → 0.71) alongside a graph refresh.
-
-### `forget()` — surgical subgraph deletion
-```python
-await cognee.forget(dataset=dataset)
-```
-Models legal record expungement: removes one dataset's subgraph while leaving every other
-node/edge intact. Exercised by `POST /expunge`.
-
-`reset_all()` is a dev convenience (`cognee.prune.prune_data()` +
-`cognee.prune.prune_system(metadata=True)`) for wiping everything, used by
-`ingest.py --reset`. Metadata must be pruned too; otherwise Cognee can deduplicate
-re-added documents after the graph/vector stores have been deleted.
-
-The narrated demo uses `remember_many()` to stage all 11 hero-case documents, then calls
-the same typed `cognify()` path with `data_per_batch=1` and `chunk_size=1200`. This keeps
-structured extraction within the local Ollama model's context window without rebuilding
-the whole growing graph once per document.
-
-The full benchmark uses the same staged-build helper for all 261 documents. This changes
-only pipeline scheduling: every document still enters the `coldcases` dataset, while the
-typed graph is built once after staging instead of being rebuilt 261 times.
-
----
-
-## 8. Backend API surface (`backend/main.py`)
-
-All routes mirror `docs/API_CONTRACT.md`. Each route checks the module-level `LIVE` flag
-and either calls into `memory_service` or returns curated mock JSON from
-`frontend/mock/*.json` (`graph.json`, `timeline.json`, `recall_compare.json`).
-
-| Route | Method | LIVE behavior | DEGRADED behavior |
-|---|---|---|---|
-| `/health` | GET | — | Reports `{"ok": true, "mode": "live"|"degraded"}` |
-| `/graph` | GET | Returns curated `graph.json` plus evidence nodes added by successful uploads in this backend session | Same session graph shape |
-| `/graph/temporal` | GET | Filters the same graph client-side by `?time=` cutoff (nodes with no `date` are always visible; edges kept only if both endpoints are visible) | same |
-| `/timeline` | GET | — | Returns `timeline.json` |
-| `/contradictions` | GET | Runs two `recall()` GRAPH queries (general contradiction + specific alibi-vs-motel check) and attaches the live answer to the curated contradiction | Curated contradictions from `graph.json` |
-| `/benchmark` | GET | Serves `benchmark/results.json` if present | Same, or a note to run the benchmark |
-| `/recall/compare` | GET | Runs `recall()` in both VECTOR and GRAPH modes for the same query, extracts cited doc IDs via regex, groups them by case prefix | Returns `recall_compare.json` |
-| `/recall` | POST | Runs `recall()` in the requested mode (graph/vector/insights) | Returns the matching branch of `recall_compare.json` |
-| `/hunch` | POST | `memory_service.log_hunch()` | No-op, echoes session_id |
-| `/resolve` | POST | `memory_service.resolve_case()` | No-op; both return a mocked recall@3 metric |
-| `/expunge` | POST | `memory_service.expunge()` + also strips matching nodes/edges from the mock graph so the UI updates | Strips matching nodes from mock graph only |
-| `/missing-hours` | GET | Adds a live `recall()` insight to a curated set of 3 timeline gaps for the suspect | Curated gaps only |
-| `/nexus` | POST | Looks up a curated shortest-path narrative for known node pairs, adds a live `recall()` insight | Curated path only, or an "unknown path" stub |
-| `/interrogation` | POST | Curated tactical questions/traps + live `recall()` insight | Curated only |
-| `/whatif` | POST | Curated recalculated-score sandbox + live `recall()` insight against the hypothesis | Curated only |
-| `/chat` | POST | `recall()` in GRAPH mode, extracts cited doc IDs | Canned answer/sources |
-| `/report` | GET | Runs 5 `recall()` GRAPH queries (suspect, MO, alibi contradiction, cross-jurisdiction link, recommendation) and assembles them into report sections | Canned 5-section report |
-| `/suspect-timeline` | GET | `recall()` GRAPH query asking for a full chronological reconstruction | Canned 6-event timeline |
-| `/transcribe` | POST | `transcribe_audio()` (Whisper) | Canned message |
-| `/ingest-file` | POST | Dispatches to the per-modality extractor (§4), then `memory_service.remember()` on the extracted text; returns `graph_node_id` and adds the uploaded file as an evidence node in the session graph | Returns the same response/graph-node shape without writing to Cognee |
-
-`known_doc_ids()`/`extract_ids()` are the shared helpers that regex-scan a hero-case
-`DOC_ID:` header set and map any retriever's raw output back to citeable source IDs —
-used by `/recall`, `/recall/compare`, and `/chat` for the "sources" shown in the UI.
+Deleting a case:
+- rejects active work
+- expunges the case dataset when live
+- removes app-owned records and files
 
 ---
 
 ## 9. Frontend architecture (`frontend/src/`)
 
-`main.jsx` mounts `App.jsx`. `api.js` is the single fetch wrapper (`get`/`post` against
-`VITE_API_BASE`, default `http://localhost:8000`) — every panel imports `api` from there,
-never calls `fetch` directly.
+`App.jsx` now behaves as a case workspace shell:
+- no default hero-case landing page
+- open/create/archive/delete cases in `CaseHome`
+- enter upload/review flow first for empty cases
+- open directly to the Evidence Board for cases that already have evidence
+- render chat in a persistent right-hand aside
 
-`App.jsx` owns:
-* **Tab state** — an array of 11 tabs (`TABS`), each with an id, label, icon, one-line
-  blurb, and a "try this" hint; number keys `1`–`0` jump between tabs (keydown listener,
-  ignored while typing in inputs).
-* **Health polling** — one-shot `api.health()` on mount, drives the "● live / ◐ degraded /
-  ○ offline" badge.
-* **Global actions** — "⚡ Improve" (`handleImprove` → `POST /resolve`, updates the
-  before/after metric card and re-fetches the graph), "Export Report" (`handleExportReport`
-  → `GET /report`, shown in a modal with a "copy as markdown" action), and "❓ How this
-  works" (a first-run/onboarding modal listing every tab's purpose — the `showGuide`
-  state persisted to `localStorage` so it only auto-shows once).
-* **Toast notifications** — e.g. after an upload changes the graph, showing a
-  "Graph updated — N new nodes ingested" message.
+### Components currently mounted by `App.jsx`
 
-### Panel-by-panel feature breakdown
+| Component | Role |
+|---|---|
+| `CaseHome.jsx` | case list, create form, archive/restore/delete |
+| `CaseImportPanel.jsx` | upload queue, SSE+poll refresh, review/confirm/retry/cancel |
+| `GraphPanel.jsx` | case-scoped evidence board + rebuild action |
+| `CaseTimelinePanel.jsx` | derived case timeline |
+| `CaseInterrogationPanel.jsx` | case-scoped questioning assistant |
+| `CaseWhatIfPanel.jsx` | case-scoped hypothesis sandbox |
+| `ChatPanel.jsx` | case chat |
 
-| Tab | Component | What it does | Backend calls |
-|---|---|---|---|
-| Case Chat | `ChatPanel.jsx` | Free-form Q&A over the case, graph-grounded | `POST /chat` |
-| Evidence Board | `GraphPanel.jsx` | Force-directed semantic graph of verified people, places, vehicles, and evidence. Documents appear only as clickable provenance on typed edges; unsupported co-occurrence edges are excluded. Case graphs can be rebuilt from confirmed records with visible progress. The legacy demo graph retains its temporal filter. | `GET /cases/{id}/graph`, `POST /cases/{id}/reindex` |
-| Graph vs Vector | `ComparePanel.jsx` | Runs one query through both Cognee retrieval modes side by side to demonstrate multi-hop graph traversal beating plain vector search | `GET /recall/compare`, `POST /recall` |
-| Cognee APIs | `CogneePanel.jsx` | Interactive playground: one card per lifecycle call (remember/recall/improve/forget) showing the real Python snippet plus a "Run" button that executes it live against the case | `POST /hunch`, `POST /resolve`, `POST /expunge`, `POST /recall` (indirectly, via the "try" actions) |
-| Timeline | `TimelinePanel.jsx` | Chronological incident list, filterable/scrubbable by date | `GET /timeline` |
-| Missing Hours | `MissingHoursPanel.jsx` | Surfaces unaccounted-for time windows in the suspect's timeline as investigative leads (urgency-ranked, with concrete evidence-pull recommendations) | `GET /missing-hours` |
-| Nexus Point | `NexusPanel.jsx` | Shortest-path explainer between two arbitrary graph nodes (e.g. suspect → case), shown as a hop-by-hop narrative | `POST /nexus` |
-| Interrogation | `InterrogationPanel.jsx` | Generates a tactical question set built from known contradictions/weak edges for a suspect | `POST /interrogation` |
-| What-If | `WhatIfPanel.jsx` | Sandbox to test a hypothesis (e.g. discount a witness) and see recalculated confidence scores without mutating real data | `POST /whatif` |
-| Import Case Files and Data | `UploadPanel.jsx` | Multi-file drag-and-drop queue; each non-text file supports optional investigator context and editable model output. Batch analysis permits partial success; confirmed files are cognified sequentially | `POST /ingest-files/analyze`, `POST /ingest-files/confirm` |
-| Suspect Timeline | `SuspectTimelinePanel.jsx` | Minute-by-minute reconstruction of one suspect's movements/events across all ingested evidence, each entry with a confidence score and source doc IDs | `GET /suspect-timeline` |
+### Components still in repo but not part of the main shell
+
+Several older single-workspace demo panels remain in `frontend/src/components/` for legacy/demo compatibility, but they are no longer the dominant app architecture.
 
 ---
 
-## 10. Benchmark — proving graph beats vector (`benchmark/benchmark.py`)
+## 10. Legacy/global helpers worth knowing about
 
-Three retrievers run against the *same* corpus (hero case + noise) and the *same* query
-set (`benchmark/queries.json`), each query labeled `single_hop` or `multi_hop`:
+### `/case-name`
 
-1. **`naive_vector`** — fully offline baseline: `sentence-transformers` embeddings +
-   cosine top-k (no Cognee/LLM key needed; runs with `--naive`).
-2. **`cognee_vector`** — Cognee's own vector retrieval (`SearchType` vector/RAG mode).
-3. **`cognee_graph`** — Cognee's graph traversal (`SearchType` graph/insights mode) — the
-   capability this whole app is arguing for.
+The backend still exposes `GET/POST /case-name`, and `_get_case_label()` still supports:
+- manual override via `POST /case-name`
+- auto-generated short labels from ingested legacy evidence
+- curated demo default when no evidence exists
 
-Scoring: Recall@3, Recall@5, and MRR, computed by regex-extracting known `DOC_ID:` values
-from each retriever's raw output (shape-agnostic — works whether Cognee returns chunks,
-nodes, or a synthesized answer) and comparing against gold doc IDs per query. Hypothesis:
-all three tie on single-hop lookups; `cognee_graph` pulls ahead on multi-hop
-(cross-document, cross-jurisdiction) queries. Results are written to
-`benchmark/results.json` (+ `chart.png`) and served live via `GET /benchmark`.
+However, the current frontend does **not** call these endpoints. The active case label in the main UI comes from the selected case's stored title.
+
+### Global `/graph` and `/stats`
+
+The live-stats fix landed on the legacy/global graph surface:
+- `docs_ingested` now uses real backend counts
+- `case_label` comes from `_get_case_label()`
+
+That behavior is accurate for the old global demo routes, not the current case-scoped stats ribbon.
 
 ---
 
-## 11. Running it end-to-end
+## 11. Running the right thing for the right purpose
 
-```bash
-./setup.sh                 # venv + pip install -r requirements.txt + .env scaffold
-# edit .env: set LLM_API_KEY (OpenAI/Anthropic/Groq/Ollama — see .env.example)
-python scripts/generate_corpus.py     # (re)generate the 250-file noise corpus
-python scripts/ingest.py --reset      # prune, then ingest hero case + noise corpus
-uvicorn backend.main:app --reload --port 8000    # backend (auto LIVE since key is set)
-cd frontend && npm install && npm run dev         # frontend (Vite, talks to :8000)
-python benchmark/benchmark.py         # optional: regenerate benchmark/results.json
-```
+Use this split to avoid confusion:
 
-Without `LLM_API_KEY` set, the backend still boots in DEGRADED mode and the frontend is
-fully explorable against the curated mock fixtures — useful for UI development or a demo
-environment with no network/LLM access.
+| Goal | Use |
+|---|---|
+| current UI / durable cases | create cases in the frontend and upload evidence |
+| benchmark / narrated demo | `scripts/generate_corpus.py`, `scripts/ingest.py`, `demo/demo.py` |
+| frontend-only work | `scripts/mock_server.py` |

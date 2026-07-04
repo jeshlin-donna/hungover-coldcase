@@ -1,8 +1,12 @@
 """
-memory_service.py — the single abstraction over Cognee for ColdCache: Cold Case Connector.
+memory_service.py — ColdCache's abstraction over the Cognee SDK.
 
-Everything (FastAPI, demo, benchmark) goes through here so the rest of the codebase
-never touches the raw SDK. All four lifecycle APIs live here:
+This module owns all direct Cognee lifecycle usage for ingestion, recall, improve,
+forget, the narrated demo, and the benchmark. The current case-scoped UI may answer
+some interactive questions from persisted app analysis first, but when ColdCache talks
+straight to Cognee it does so through this module.
+
+All four lifecycle APIs live here:
 
     remember()  -> ingest case files / corpus into the knowledge graph
     recall()    -> query, with EXPLICIT graph-vs-vector modes (key for our benchmark)

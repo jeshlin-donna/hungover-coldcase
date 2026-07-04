@@ -19,7 +19,7 @@ We built a knowledge graph over all the evidence using self-hosted @cognee_ai an
 Naive vector multi-hop R@3: 0.401 (vs single-hop: 0.500)
 That 50% → 40% collapse on cross-jurisdiction queries is the whole thesis — and exactly what graph traversal is designed to close.
 
-Full benchmark results in benchmark/results.json.
+Naive baseline is checked in today; full live Cognee benchmark numbers are still being finalized.
 
 ---
 
@@ -44,7 +44,7 @@ We spent the last week building Cold Case Connector for the WeMakeDevs × Cognee
 
 The premise: three linked burglaries, two police departments with no shared records system, and an offender who evaded detection for nearly two years — not because the evidence was missing, but because nobody could see it all at once.
 
-We used self-hosted Cognee to build a knowledge graph over the case files, then ran a benchmark comparing naive vector search against Cognee's graph traversal on multi-hop questions — the kind where the answer requires connecting documents across jurisdictions. The numbers were real: graph retrieval pulled significantly ahead on exactly those queries.
+We used self-hosted Cognee to build a knowledge graph over the case files, then ran a benchmark comparing naive vector search against Cognee's graph traversal on multi-hop questions — the kind where the answer requires connecting documents across jurisdictions. The naive baseline is already real, and partial live Cognee graph numbers are directionally strong; the full end-to-end 3-way run is still being finalized.
 
 What I didn't expect: the most interesting design problem wasn't the graph itself. It was using improve() correctly — understanding that session memory and permanent memory are separate layers, and that the improve() call only means something when it's bridging actual session history into the permanent graph. The API design rewards you for thinking about the *lifecycle* of knowledge, not just retrieval.
 

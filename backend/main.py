@@ -1,14 +1,16 @@
 """
-main.py — FastAPI backend. Mirrors docs/API_CONTRACT.md exactly, so the frontend swaps
-from the stdlib mock server to this with a one-line base-URL change.
+main.py — FastAPI backend for both ColdCache surfaces:
 
-Key design: it runs in TWO modes automatically.
-  • LIVE      — cognee + LLM_API_KEY present → real recall/improve/forget via memory_service
-  • DEGRADED  — deps/key missing → serves the curated mock JSON, never crashes
-This is also our demo safety net (risk register: "live demo crashes"). The UI shows the
-mode via GET /health so we always know which we're in.
+1. the current case-scoped workspace (`/cases/...`), backed by application-owned
+   SQLite/file storage and durable jobs
+2. the older global demo/benchmark API (`/graph`, `/recall`, `/report`, ...), kept for
+   narrated-demo, benchmark, and mock-server compatibility
 
-Run (on a machine with deps):  uvicorn backend.main:app --reload --port 8000
+The backend still auto-detects LIVE vs DEGRADED mode:
+  • LIVE      — Cognee + provider path available
+  • DEGRADED  — curated/mock-compatible fallbacks remain available
+
+Run: uvicorn backend.main:app --reload --port 8000
 """
 from __future__ import annotations
 
@@ -167,8 +169,8 @@ def _ollama_reachable() -> bool:
 
 
 def _note_fallback(reason: str) -> None:
-    """Record that we just fell back to a local model, so /health can surface
-    it in the UI (stats ribbon / status) instead of it being a silent swap."""
+    """Record that we just fell back to a local model so `/health` can surface
+    it to callers instead of the swap being silent."""
     import datetime
 
     FALLBACK_STATE["active"] = True
@@ -462,9 +464,9 @@ DATASET = "coldcases"
 UPLOADED_NODES: list[dict] = []
 PENDING_INGESTIONS: dict[str, dict] = {}
 
-# --- Case label: either a manual override (set via POST /case-name) or an
-# LLM-auto-generated short label derived from the ingested evidence itself,
-# regenerated only when the evidence set actually changes (cheap to poll). ---
+# --- Legacy/global case label helper: either a manual override (POST /case-name)
+# or an auto-generated short label derived from legacy uploaded evidence. The
+# current multi-case frontend uses stored case titles instead of this helper. ---
 CASE_LABEL_OVERRIDE: str | None = None
 _case_label_cache: dict = {"label": None, "upload_count": -1}
 
@@ -1056,9 +1058,9 @@ def health():
 
 
 async def _get_case_label() -> str:
-    """Resolve the case label shown in the stats ribbon: a manual override (set via
-    POST /case-name) always wins; otherwise, once there's real ingested evidence, ask
-    the LLM for a short label derived from it."""
+    """Resolve the label used by the legacy/global `/graph` + `/case-name` surface.
+    A manual override (set via POST /case-name) always wins; otherwise, once there's
+    real legacy uploaded evidence, ask the LLM for a short derived label."""
     if CASE_LABEL_OVERRIDE:
         return CASE_LABEL_OVERRIDE
 

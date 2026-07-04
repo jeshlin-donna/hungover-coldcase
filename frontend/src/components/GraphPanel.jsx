@@ -173,8 +173,9 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
   const sliderDate = monthIndexToDate(sliderIdx);
   const isFiltered = sliderIdx < maxIdx;
 
-  // Debounce so dragging doesn't hammer the endpoint on every tick, but this
-  // does genuinely call GET /api/v1/graph/temporal?time=X per the spec.
+  // Debounce so dragging doesn't hammer the endpoint on every tick. In the
+  // legacy/global demo mode this calls GET /graph/temporal?time=X; case-scoped
+  // graphs stay local because the current case API has no temporal route.
   useEffect(() => {
     if (!fullGraph.nodes?.length) return;
     if (!isFiltered) {

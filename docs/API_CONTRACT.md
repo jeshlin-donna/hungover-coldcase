@@ -1,153 +1,394 @@
 # API Contract (frontend ⇄ backend)
 
-Benjy builds against the **mock JSON** in `frontend/mock/` and the **stdlib mock server**
-(`python scripts/mock_server.py`, no pip needed). Sam's FastAPI implements these exact
-shapes so swapping mock → real is a one-line base-URL change.
+Source of truth: `backend/main.py`.
 
-Base URL: `http://localhost:8000`. All responses JSON. CORS open in dev.
+ColdCache now exposes **two API surfaces**:
 
-> **Planned v2 case-scoped contract:** the endpoints below are currently session/global APIs.
-> The durable replacement—`/cases`, case evidence, jobs, SSE progress, and migration rules—is in
-> [`CASE_PERSISTENCE_PLAN.md`](CASE_PERSISTENCE_PLAN.md). V2 resolves Cognee datasets from
-> `case_id`; clients will not submit arbitrary dataset names.
+1. **Current case-scoped API** — used by the main frontend in `frontend/src/App.jsx`
+2. **Legacy/global API** — retained for the narrated demo, benchmark, mock parity, and older UI flows
 
-## V2 durable case APIs (implemented)
+Base URL in local dev: `http://localhost:8000`
 
-- `POST /cases`, `GET /cases`, `GET/PATCH /cases/{case_id}` — durable case lifecycle.
-- `POST /cases/{case_id}/evidence` — persist a multipart batch and queue analysis; returns `202`.
-- `GET /cases/{case_id}/evidence` — complete reload snapshot of evidence and jobs.
-- `POST /cases/{case_id}/evidence/{evidence_id}/confirm` — save review revision and queue ingestion.
-- `PATCH /cases/{case_id}/evidence/{evidence_id}/draft` — optimistic, reload-safe review drafts.
-- `POST /cases/{case_id}/evidence/{evidence_id}/retry|cancel` — durable recovery controls.
-- `DELETE /cases/{case_id}/evidence/{evidence_id}` — guarded removal; ingested evidence rebuilds the case dataset.
-- `GET /cases/{case_id}/jobs` — polling/reconciliation snapshot.
-- `GET /cases/{case_id}/events` — replayable SSE events (`Last-Event-ID`/`after`) with polling fallback.
-- `GET /cases/{case_id}/stats|graph|chat/suggestions` and `POST /cases/{case_id}/chat` — isolated case tools.
-- `POST /cases/{case_id}/reindex` — queue a durable case job that builds a replacement Cognee dataset from confirmed evidence records, atomically activates it only after success, and invalidates the derived graph cache. Progress is available through case jobs/SSE and survives navigation or reload.
-- `POST /cases/{case_id}/archive|restore` and `DELETE /cases/{case_id}` — lifecycle controls.
-- Case-scoped `timeline`, `contradictions`, `report`, `hunch`, `resolve`, `interrogation`, and `whatif` routes.
+**Current frontend note:** `frontend/src/App.jsx` actively uses only a subset of the case-scoped routes today:
+- `/cases`
+- `/cases/{id}/evidence`
+- `/cases/{id}/jobs`
+- `/cases/{id}/events`
+- `/cases/{id}/stats`
+- `/cases/{id}/graph`
+- `/cases/{id}/reindex`
+- `/cases/{id}/chat`
+- `/cases/{id}/chat/suggestions`
+- `/cases/{id}/timeline`
+- `/cases/{id}/interrogation`
+- `/cases/{id}/whatif`
 
-Evidence and job state is stored in application SQLite; original files are stored beneath the
-case ID. Analysis jobs recover to `queued` after an interrupted backend process. Cognee dataset
-names are immutable UUID-derived values held by the server.
-Uploads stream through bounded temporary storage (25 MB/file, 50 files and 250 MB/batch by
-default). SHA-256 duplicates within a case are reported and skipped instead of reprocessed.
-
-`GET /cases/{case_id}/graph` returns semantic case, person, location, vehicle, and evidence nodes.
-Files are provenance on nodes/edges rather than document nodes. Relationships are typed factual
-claims (`occurred_at`, `observed_near`, `examined`, etc.); mere co-occurrence never creates an
-edge. The result is cached by graph revision. `timeline`, `chat`, `interrogation`, and `whatif`
-consume the same case analysis. When Cognee recall fails, responses use `mode: "derived"` rather
-than returning demo content or failing silently.
+Other case-scoped endpoints documented below are implemented in the backend but are not currently wired into the main app shell.
 
 ---
 
-### `GET /graph`
-The case web for the force-graph view.
+## 1. Current case-scoped API (primary frontend contract)
+
+### Health
+
+#### `GET /health`
 ```json
 {
-  "nodes": [{"id": "tool:pry-8mm", "label": "Pry bar (8mm, left nick)", "type": "tool"}],
-  "edges": [{"source": "case:MH-0312", "target": "tool:pry-8mm", "relation": "tool_used"}],
-  "mode": "live"
-}
-```
-`type` ∈ `case | tool | vehicle | mo | suspect | jurisdiction | alibi | receipt | evidence`.
-Frontend colors by `type`. After a successful `POST /ingest-file`, the graph also includes
-a session evidence node whose `id` matches the upload response's `graph_node_id`. The curated
-graph/edges are always returned as-is (the reliable demo visual — never blocked by a live
-call failing). In LIVE mode the response additionally carries a `cognee_insight` string from
-a real Cognee `TRIPLET_COMPLETION` ("insights") query over the same case data, plus
-`"mode": "live"`; if that live call errors, `mode` stays `"degraded"` and a
-`cognee_insight_error` field is included instead — the curated graph itself is unaffected.
-
-### `GET /timeline`
-```json
-{"events": [{"date": "2023-03-03", "case": "MH-2023-0312", "jurisdiction": "Maple Heights",
-             "title": "Burglary — 14 Maple Heights Dr", "summary": "Rear slider, cam obscured."}]}
-```
-
-### `GET /recall/compare?query=...`
-The 3-way split-screen. `sources` are doc IDs; `connects` is the set of cases the answer
-actually linked (drives the "only graph connected both jurisdictions" highlight).
-```json
-{
-  "query": "Is there forensic evidence linking Maple Heights and Riverside?",
-  "results": {
-    "naive_vector":  {"answer": "...", "sources": ["MH-0312-FOR"], "connects": ["MH-2023-0312"], "latency_ms": 120},
-    "cognee_vector": {"answer": "...", "sources": ["MH-0312-FOR","MH-0102-FOR"], "connects": ["MH-2023-0312"], "latency_ms": 340},
-    "cognee_graph":  {"answer": "...", "sources": ["MH-0312-FOR","RV-0788-FOR"], "connects": ["MH-2023-0312","RV-2023-0788"], "latency_ms": 410}
+  "ok": true,
+  "mode": "live",
+  "case_count": 2,
+  "case_database": "coldcache.db",
+  "fallback": {
+    "active": false,
+    "last_reason": null,
+    "last_at": null
   }
 }
 ```
 
-### `POST /recall`  `{ "query": "...", "mode": "graph|vector|insights" }`
-→ `{ "mode": "...", "answer": "...", "sources": ["..."], "latency_ms": 0 }`
+`fallback` is the new post-merge health signal for Groq→local failover.
 
-### `POST /hunch`  `{ "text": "...", "session_id": "case-001" }`
-→ `{ "ok": true }`  (detective's in-session note → Cognee session memory)
+---
 
-### `POST /resolve`  `{ "session_ids": ["case-001"] }`
-Runs `improve()`. Returns the **before/after** so the UI can animate the metric climbing.
-```json
-{"ok": true, "metric": "recall@3 on multi-hop", "before": 0.42, "after": 0.71, "mode": "degraded"}
-```
-In LIVE mode, `before`/`after` are real recall@3 scores measured by running a fixed
-multi-hop probe query (alibi vs. physical evidence) through `recall(mode=GRAPH)` immediately
-before and after the real `improve()` call — the same measurement method as
-`benchmark/benchmark_improve.py`'s q17 case — and `mode` is `"live"`. `improve()` always
-runs regardless of whether the probe measurement succeeds; if either probe call fails, the
-static demo numbers are returned instead with `"mode": "improve-ok-metric-degraded"` to make
-clear the resolution itself still completed.
+## Cases
 
-### `POST /expunge`  `{ "dataset": "case:RV-0788" }`
-Runs `forget()`. Returns which nodes vanished + the post-deletion graph (unrelated nodes
-stay) so the UI can animate the subgraph removal.
-```json
-{"ok": true, "removed": ["case:RV-0788","RV-0788-FOR"], "graph": { "nodes": [], "edges": [] }}
-```
+### `POST /cases`
+Create a case.
 
-### `GET /benchmark`
-Serves `benchmark/results.json` for the in-app benchmark chart.
-
-### `POST /ingest-file/analyze`
-Accepts multipart fields `file` and optional `context`. This extracts
-or generates reviewable text but does not write to Cognee. The response includes `review_id`,
-`extracted_text`, and `requires_confirmation: true`.
-
-### `POST /ingest-files/analyze`
-Accepts repeated multipart `files` fields and a `contexts` JSON array with one optional context entry per file.
-Returns `{ "results": [...] }` in the same order, with independent success/error states. Media
-analysis runs with bounded concurrency so a large drop does not overload the local model.
-
-### `POST /ingest-file/confirm`
-Accepts JSON `{ "review_id": "...", "extracted_text": "edited, verified text", "context": "..." }`.
-Only this confirmation step calls `remember()` and adds the evidence node to the graph.
-
-### `POST /ingest-files/confirm`
-Accepts `{ "items": [{ "review_id", "extracted_text", "context" }] }`. Items are cognified
-sequentially to respect the embedded graph database's single-writer constraint. Failed items do
-not roll back successful siblings and remain available for correction/retry.
-
-### `POST /ingest-file`
-Compatibility endpoint for plain text files, which can be ingested directly.
+Request:
 ```json
 {
-  "ok": true,
-  "filename": "case-note.txt",
-  "size_bytes": 148,
-  "dataset": "coldcases",
-  "mode": "live",
-  "type": "text",
-  "description": null,
-  "graph_node_id": "evidence:upload-1"
+  "title": "Oak Street burglary series",
+  "reference_number": "CC-2026-014",
+  "description": "Brief case context",
+  "jurisdiction": "Maple Heights PD",
+  "incident_date": "2026-07-04"
 }
 ```
 
-### `GET /chat/suggestions`
-Returns three questions generated from the active case graph. The UI uses generic prompts only
-when no live case graph is available.
+Response: created case record.
 
-### `POST /chat`
-Accepts `{ "message": "...", "history": [...] }`. In live mode, both the latest question and
-recent conversation context are passed to graph completion; conversation text is never treated
-as case evidence.
+### `GET /cases`
+```json
+{
+  "cases": [
+    {
+      "id": "uuid",
+      "title": "Oak Street burglary series",
+      "status": "open",
+      "dataset_name": "case_<uuidhex>",
+      "evidence_count": 3,
+      "active_jobs": 1,
+      "failed_jobs": 0
+    }
+  ]
+}
+```
+
+### `GET /cases/{case_id}`
+Returns the case plus embedded `evidence` and `jobs` arrays.
+
+### `PATCH /cases/{case_id}`
+Update any of:
+- `title`
+- `reference_number`
+- `description`
+- `jurisdiction`
+- `incident_date`
+- `status`
+
+### `POST /cases/{case_id}/archive`
+Archive a case.
+
+### `POST /cases/{case_id}/restore`
+Restore an archived case to `open`.
+
+### `DELETE /cases/{case_id}`
+Deletes the case and its stored files.
+- returns `204 No Content`
+- rejects deletion if the case has active queued/running jobs
+
+---
+
+## Evidence, jobs, and events
+
+### `POST /cases/{case_id}/evidence`
+Durably save a multipart batch and queue analysis.
+
+Multipart fields:
+- repeated `files`
+- `contexts` = JSON array of optional per-file strings
+
+Response:
+```json
+{
+  "ok": true,
+  "results": [
+    {
+      "evidence": {
+        "id": "uuid",
+        "original_filename": "scene-photo.jpg",
+        "modality": "image",
+        "status": "queued_analysis"
+      },
+      "job": {
+        "id": "uuid",
+        "kind": "analyze",
+        "status": "queued",
+        "stage": "queued",
+        "progress": 0
+      },
+      "duplicate_skipped": false
+    }
+  ]
+}
+```
+
+If a duplicate hash is detected within the same case, `job` is `null` and `duplicate_skipped` is `true`.
+
+### `GET /cases/{case_id}/evidence`
+```json
+{
+  "evidence": [...],
+  "jobs": [...]
+}
+```
+
+### `POST /cases/{case_id}/evidence/{evidence_id}/confirm`
+Queue confirmed text for ingestion.
+
+Request:
+```json
+{
+  "reviewed_text": "verified extracted text",
+  "context": "optional investigator context"
+}
+```
+
+Response:
+```json
+{ "ok": true, "job": { "id": "uuid", "kind": "ingest" } }
+```
+
+### `PATCH /cases/{case_id}/evidence/{evidence_id}/draft`
+Optimistic draft save while evidence is `awaiting_review`.
+
+Request:
+```json
+{
+  "reviewed_text": "draft text",
+  "context": "draft context",
+  "expected_updated_at": "2026-07-04T12:34:56Z"
+}
+```
+
+Returns the updated evidence row. A stale `expected_updated_at` yields `409`.
+
+### `POST /cases/{case_id}/evidence/{evidence_id}/retry`
+Retries the failed phase:
+- `analysis_failed` → new `analyze` job
+- `ingestion_failed` → new `ingest` job
+
+### `POST /cases/{case_id}/evidence/{evidence_id}/cancel`
+Cancels queued analysis work, or running analysis work where allowed.
+
+### `DELETE /cases/{case_id}/evidence/{evidence_id}`
+- returns `204 No Content`
+- for already-ingested evidence, the backend rebuilds the case dataset safely rather than pretending to surgically delete unknown Cognee internals
+
+### `GET /cases/{case_id}/jobs`
+```json
+{ "jobs": [...] }
+```
+
+### `GET /cases/{case_id}/events`
+Server-Sent Events stream.
+- event name: `jobs`
+- supports `Last-Event-ID`
+- also supports `?after=<event_id>` replay/poll fallback
+
+Event payload shape:
+```json
+{
+  "id": 12,
+  "case_id": "uuid",
+  "job_id": "uuid",
+  "event_type": "job.progress",
+  "payload": { "stage": "cognify", "progress": 72 },
+  "created_at": "2026-07-04T12:34:56Z"
+}
+```
+
+---
+
+## Case tools
+
+### `GET /cases/{case_id}/stats`
+```json
+{
+  "nodes": 12,
+  "docs": 4,
+  "jurisdictions": 1,
+  "active_jobs": 0,
+  "graph_revision": 3,
+  "mode": "live"
+}
+```
+
+`docs` is real ingested evidence count for that case.
+
+### `GET /cases/{case_id}/graph`
+```json
+{
+  "case_id": "uuid",
+  "graph_revision": 3,
+  "nodes": [...],
+  "edges": [...],
+  "timeline": [...],
+  "summary": "...",
+  "generated_at": "...",
+  "contradictions": [],
+  "mode": "live"
+}
+```
+
+Notes:
+- this is built from persisted derived analysis
+- `mode` is `"live"` when the backend can add live model assistance, otherwise `"derived"`
+- document files are provenance on nodes/edges, not separate graph display nodes
+
+### `POST /cases/{case_id}/reindex`
+Queues a durable case-wide rebuild from confirmed evidence.
+
+Response:
+```json
+{ "ok": true, "job": { "id": "uuid", "kind": "reindex" } }
+```
+
+### `POST /cases/{case_id}/chat`
+Request:
+```json
+{
+  "message": "What facts connect the witness and the car?",
+  "history": [{ "role": "user", "text": "..." }]
+}
+```
+
+Response:
+```json
+{
+  "answer": "...",
+  "sources": ["scene-photo.jpg", "report.pdf"],
+  "mode": "live"
+}
+```
+
+### `GET /cases/{case_id}/chat/suggestions`
+Returns deterministic suggestions based on the derived case analysis.
+
+### `GET /cases/{case_id}/timeline`
+```json
+{
+  "events": [...],
+  "summary": "..."
+}
+```
+
+### `GET /cases/{case_id}/contradictions`
+```json
+{
+  "contradictions": [],
+  "narrative": "...",
+  "mode": "live"
+}
+```
+
+### `GET /cases/{case_id}/report`
+```json
+{
+  "title": "Case Summary — ...",
+  "sections": [{ "heading": "Knowledge graph summary", "content": "..." }],
+  "mode": "live"
+}
+```
+
+### `POST /cases/{case_id}/hunch`
+Request:
+```json
+{ "text": "Possible link between pry marks", "session_id": "tab-a" }
+```
+
+Stores a session-scoped hunch (case-prefixed server-side when live).
+
+### `POST /cases/{case_id}/resolve`
+Request:
+```json
+{ "session_ids": ["tab-a", "tab-b"] }
+```
+
+Bridges case-scoped hunch sessions into the case dataset via `improve()` when live.
+
+### `POST /cases/{case_id}/interrogation`
+Request:
+```json
+{ "suspect_id": "Jordan Pike", "focus_case": "optional/ignored-by-frontend" }
+```
+
+Response:
+```json
+{ "narrative": "...", "mode": "live" }
+```
+
+### `POST /cases/{case_id}/whatif`
+Request:
+```json
+{ "hypothesis": "What if the timestamp is wrong?", "inject_edge": {} }
+```
+
+Response:
+```json
+{ "hypothesis": "...", "narrative": "...", "mode": "live" }
+```
+
+---
+
+## 2. Legacy/global API (still implemented)
+
+These endpoints still exist and are accurate for the narrated demo / benchmark path.
+
+### Global graph/stats helpers
+- `GET /stats`
+- `GET /graph`
+- `GET /graph/temporal`
+- `GET /case-name`
+- `POST /case-name`
+
+Important nuance: the current frontend does **not** use `/case-name`, even though `frontend/src/api.js` still exposes helpers for it.
+
+### Legacy graph tools
+- `GET /timeline`
+- `GET /contradictions`
+- `GET /benchmark`
+- `GET /recall/compare`
+- `POST /recall`
+- `POST /hunch`
+- `POST /resolve`
+- `POST /expunge`
+- `GET /missing-hours`
+- `POST /nexus`
+- `POST /interrogation`
+- `POST /whatif`
+- `POST /chat`
+- `GET /chat/suggestions`
+- `GET /report`
+- `GET /suspect-timeline`
+
+### Legacy upload helpers
+- `POST /transcribe`
+- `POST /ingest-file/analyze`
+- `POST /ingest-files/analyze`
+- `POST /ingest-file/confirm`
+- `POST /ingest-files/confirm`
+- `POST /ingest-file`
+
+These are still useful for the old demo flow and for mock-server compatibility.

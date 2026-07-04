@@ -1,61 +1,109 @@
-# Frontend — ColdCache Cold Case Connector
+# Frontend — ColdCache
 
-React + Vite. **8 panels** covering the full investigative co-pilot workflow.
+React + Vite frontend for the **current multi-case workspace**.
+
+The active app shell is no longer the original single-workspace demo. It now opens on a durable **Case Home**, then moves through case-scoped import/review into the workspace.
+
+---
 
 ## Run
 
 ```bash
-# Terminal 1 — backend (pick ONE):
-python ../scripts/mock_server.py          # zero-dep stdlib mock (works anywhere)
-#   or, on a machine with deps:
+# backend
 source ../.venv/bin/activate
-uvicorn backend.main:app --port 8000      # FastAPI (auto live/degraded)
+uvicorn backend.main:app --port 8000
 
-# Terminal 2 — frontend:
+# frontend
 npm install
-npm run dev                               # http://localhost:5173
+npm run dev
 ```
 
-The header badge shows backend mode (`live` / `degraded`). Use a different backend:
+Optional alternate backend:
 ```bash
 VITE_API_BASE=http://host:8000 npm run dev
 ```
 
-## The 8 Panels
+---
 
-| Tab | Component | What it does |
+## Current UI flow
+
+### 1. Case home
+
+`CaseHome.jsx`
+- loads `GET /cases`
+- caches the last known non-sensitive case summary list in localStorage
+- supports create / archive / restore / delete
+- is authoritative only when the backend is reachable; cache is a reconnect aid
+
+### 2. Import / review queue
+
+`CaseImportPanel.jsx`
+- uploads via `POST /cases/{id}/evidence`
+- refreshes from both polling and SSE (`GET /cases/{id}/events`)
+- lets investigators review/edit extracted text
+- auto-saves drafts via `PATCH /cases/{id}/evidence/{evidence_id}/draft`
+- confirms via `POST /cases/{id}/evidence/{evidence_id}/confirm`
+- retries/cancels durable jobs
+
+### 3. Workspace tabs
+
+Mounted by `App.jsx` today:
+
+| UI area | Component | Backend |
 |---|---|---|
-| Case Graph | `GraphPanel.jsx` | Force-directed entity graph, alibi red edges, expunge animation |
-| Graph vs Vector | `ComparePanel.jsx` | 3-col naive/RAG/graph compare, GRAPH WINS banner on multi-hop |
-| Timeline | `TimelinePanel.jsx` | Chronological incidents + temporal slider (Jan 2023–Dec 2025) |
-| Missing Hours | `MissingHoursPanel.jsx` | Timeline gaps with CRITICAL/HIGH urgency + recommendations |
-| Nexus | `NexusPanel.jsx` | Shortest entity path between any two graph nodes |
-| Interrogation | `InterrogationPanel.jsx` | Trap questions, weak edges, strategy brief |
-| What-If | `WhatIfPanel.jsx` | Hypothesis → before/after confidence bar chart |
-| Upload | `UploadPanel.jsx` | **Multimodal drag-drop** — all file types, see below |
+| Evidence Board | `GraphPanel.jsx` | `GET /cases/{id}/graph`, `POST /cases/{id}/reindex` |
+| Timeline | `CaseTimelinePanel.jsx` | `GET /cases/{id}/timeline` |
+| Interrogation | `CaseInterrogationPanel.jsx` | `POST /cases/{id}/interrogation` |
+| What-If | `CaseWhatIfPanel.jsx` | `POST /cases/{id}/whatif` |
+| Chat aside | `ChatPanel.jsx` | `POST /cases/{id}/chat`, `GET /cases/{id}/chat/suggestions` |
 
-## Multimodal Upload Panel
+The header case label comes from the selected case record's stored title.
 
-`UploadPanel.jsx` accepts any of these — the backend routes each to the right extractor:
+---
 
-| File type | Pipeline shown to user |
-|---|---|
-| 🖼️ `.jpg .png .gif .webp` | Image preview → "Claude Vision will extract forensic details" |
-| 🎙️ `.mp3 .wav .m4a .ogg .aac` | "Transcribing audio…" → transcript shown inline |
-| 🎬 `.mp4 .mov .avi .webm` | "Extracting frames…" → per-timestamp descriptions |
-| 📄 `.pdf` | "Extracting PDF…" → page-by-page text |
-| 📊 `.xlsx .xls .csv` | "Parsing spreadsheet…" → column/row summary |
-| 📃 `.txt .md` | Direct ingest |
+## Components currently imported by `App.jsx`
 
-After ingestion, the extracted description appears inline in the "Recently ingested" list.
+- `CaseHome.jsx`
+- `CaseImportPanel.jsx`
+- `GraphPanel.jsx`
+- `CaseTimelinePanel.jsx`
+- `CaseInterrogationPanel.jsx`
+- `CaseWhatIfPanel.jsx`
+- `ChatPanel.jsx`
 
-## API
+---
 
-All backend calls go through `src/api.js`. Routes match `docs/API_CONTRACT.md` exactly.
+## Components present in the repo but not part of the main app shell
 
-## Where to extend
+These still exist under `src/components/`, mostly for legacy/demo compatibility:
+- `InterrogationPanel.jsx`
+- `TimelinePanel.jsx`
+- `UploadPanel.jsx`
+- `WhatIfPanel.jsx`
+- `SuspectTimelinePanel.jsx` (imported in `App.jsx` but not rendered)
 
-- `GraphPanel.jsx` — improve() animation: re-fetch graph after POST /resolve, pulse newly-promoted edges
-- `ComparePanel.jsx` — add per-mode latency display
-- `UploadPanel.jsx` — add audio waveform preview, video thumbnail extraction
-- `src/api.js` — single source of backend routes
+`GraphPanel.jsx` is dual-purpose: it supports the current case-scoped graph and still contains logic for the older global demo graph when no `caseId` is supplied.
+
+---
+
+## API notes
+
+`src/api.js` still exposes both:
+- **current case-scoped helpers** (`cases`, `caseEvidence`, `caseStats`, `caseTimeline`, etc.)
+- **legacy/global helpers** (`graphTemporal`, `compare`, `missingHours`, `nexus`, `report`, `caseName`, `setCaseName`, etc.)
+
+The current main UI primarily uses the case-scoped helpers.
+
+Notable nuance:
+- `caseName()` / `setCaseName()` still exist in `api.js`
+- the current frontend does **not** call them
+- `/case-name` is effectively backend-only / legacy at the moment
+
+---
+
+## Developer notes
+
+- `CaseImportPanel.jsx` intentionally combines polling and SSE so reload/reconnect stays honest.
+- `GraphPanel.jsx` can launch and watch a durable reindex job.
+- `App.jsx` starts empty until a case is selected; this is the expected post-merge behavior.
+- If you only populated the legacy `coldcases` dataset via `scripts/ingest.py`, the current frontend will still show an empty case home until you create a case in the app.

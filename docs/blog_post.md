@@ -63,7 +63,7 @@ async def cognify(dataset: str = DEFAULT_DATASET) -> None:
     await cognee.cognify(datasets=[dataset])
 ```
 
-We use `add()` + `cognify()` rather than the high-level `remember()` because it gives us explicit dataset control — critical for the expungement flow. Each case file, forensic report, and witness statement goes in as its own text chunk. Cognee extracts the entities and relationships and builds the graph automatically.
+We use `add()` + `cognify()` rather than the high-level `remember()` because it gives us explicit dataset control. In the current app, every durable case gets its own immutable Cognee dataset; the older narrated demo still uses the legacy global `coldcases` dataset. Cognee extracts the entities and relationships and builds the graph automatically.
 
 ### 2. `recall()` — Ask Cross-Jurisdiction Questions
 
@@ -118,7 +118,7 @@ async def expunge(dataset: str) -> None:
     await cognee.forget(dataset=dataset)
 ```
 
-In the UI, clicking "Seal Record" calls this endpoint, and you watch the expunged subgraph disappear from the force-directed graph while every other node and edge stays exactly where it was. No cascade. No collateral deletion. The graph is a living legal record, and `forget()` is the redaction pen.
+ColdCache still exposes this flow in the backend and in the legacy demo surface. In the merged repo the main frontend no longer centers expungement as a primary button, but the architectural point remains the same: one dataset can be removed without pretending the whole system is disposable. The graph is a living legal record, and `forget()` is the redaction pen.
 
 ---
 
@@ -149,11 +149,11 @@ We are careful about attribution here: **Cognee builds the unified graph**. The 
 
 **`improve()` only does real work with `session_ids`.** The docs say this, but we initially called it without session IDs and wondered why nothing changed. The pattern is: log hunches with `session_id` during the investigation, pass those same IDs to `improve()` at resolution. The flow only clicks once you understand that session memory and permanent memory are separate layers.
 
-**`add()` + `cognify()` is better than `remember()` for dataset control.** The high-level `remember()` is convenient, but if you want surgical `forget()` later you need discrete datasets. We structured one dataset per case jurisdiction, plus a `marsh_record` dataset for the expungement demo, plus a `coldcases` aggregate for cross-jurisdiction queries.
+**`add()` + `cognify()` is better than `remember()` for dataset control.** The high-level `remember()` is convenient, but if you want surgical `forget()` later you need discrete datasets. In the merged codebase, the current app uses one immutable dataset per case, while the older narrated demo / benchmark path still uses the shared `coldcases` dataset.
 
 **The benchmark design matters as much as the benchmark result.** We spent as much time writing multi-hop queries that *structurally require* graph traversal as we did running the numbers. A multi-hop query needs to be one that cannot be answered from any single document. If you write lazy multi-hop queries, all three retrievers converge and you prove nothing. The discipline is: write the gold label first, then design the query so the label requires connecting at least two documents from different jurisdictions.
 
-**Self-hosted Cognee is genuinely fast to set up.** We had the full stack running — Kuzu for the graph, LanceDB for the vector index, local embeddings via `nomic-embed-text` — in under an hour on a standard MacBook. No cloud account required, no API quota to worry about. Graph extraction runs on a local Ollama model (`gemma4:e4b`), and image/video ingestion uses a local vision model (`llava:7b`) — the entire pipeline runs with zero cloud dependency. For a use case involving sensitive (even synthetic) investigative data, the self-hosted posture is not just technically cleaner; it is the only ethically defensible option. If you want faster extraction without going local-only, Groq's free tier (open-source Llama via LPU hardware) is a drop-in swap: change three lines in `.env`.
+**Self-hosted Cognee is genuinely fast to set up.** We had the full stack running — Kuzu for the graph, LanceDB for the vector index, local embeddings via `nomic-embed-text` — in under an hour on a standard MacBook. No cloud account required, no API quota to worry about. Graph extraction runs on a local Ollama model (`gemma4:e4b`), and image/video ingestion uses a local vision model (`llava:7b`) — the entire pipeline runs with zero cloud dependency. For a use case involving sensitive (even synthetic) investigative data, the self-hosted posture is not just technically cleaner; it is the only ethically defensible option. If you want faster extraction without going local-only, Groq is a drop-in path in `.env`; the current backend can also fall back from Groq to local Ollama when Groq is rate-limited.
 
 ---
 

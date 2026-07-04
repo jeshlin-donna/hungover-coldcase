@@ -1,72 +1,120 @@
-# Cognee API Notes — VERIFIED against source
+# Cognee API Notes — VERIFIED against source + current ColdCache integration
 
-> Source of truth: `github.com/topoteretes/cognee` @ `main`, `cognee/api/v1/*`.
-> Verified by reading the actual function definitions (no live key needed). The only item
-> still flagged for a live keyed run is the runtime shape of recall/search results.
+> Source of truth for SDK signatures: `github.com/topoteretes/cognee` @ `main`, `cognee/api/v1/*`.
+> Source of truth for app behavior: `backend/memory_service.py` and `backend/main.py` in this repo.
 
 | Question | Verified answer |
 |---|---|
-| `SearchType` import path | `from cognee import SearchType` (re-exported from `cognee.api.v1.search`) |
-| `SearchType` members | `SUMMARIES, CHUNKS, RAG_COMPLETION, HYBRID_COMPLETION, TRIPLET_COMPLETION, GRAPH_COMPLETION, GRAPH_COMPLETION_DECOMPOSITION, GRAPH_SUMMARY_COMPLETION, CYPHER, NATURAL_LANGUAGE, GRAPH_COMPLETION_COT, GRAPH_COMPLETION_CONTEXT_EXTENSION, FEELING_LUCKY, TEMPORAL, CODING_RULES, CHUNKS_LEXICAL, AGENTIC_COMPLETION` |
-| ⚠️ `INSIGHTS`? | **Does NOT exist in this version.** Use `TRIPLET_COMPLETION` for relationships/triples. Its triplet embeddings must be created after `cognify()`; `memory_service.prepare_insights()` does this lazily on the first insights recall. (Old scaffold assumed INSIGHTS → would crash.) |
-| `add` | `await cognee.add(data, dataset_name="main_dataset", ..., run_in_background=False)` |
-| `cognify` | `await cognee.cognify(datasets=Union[str,list]=None, ..., run_in_background=False)` — **synchronous by default** |
-| `search` | `await cognee.search(query_text, query_type=SearchType.GRAPH_COMPLETION, datasets=Optional[list|str], ...)` → `list[RecallResponse]` |
-| `recall` | `await cognee.recall(query_text, query_type=None, *, datasets=None, top_k=15, auto_route=True, session_id=None, ...)` → `list[RecallResponse]` |
-| `remember` | `await cognee.remember(data, dataset_name="main_dataset", *, session_id=None, run_in_background=False, self_improvement=True, session_ids=None, ...)`. No session_id → permanent (add+cognify). With session_id → session memory. |
-| `improve` | `await cognee.improve(dataset="main_dataset", run_in_background=False, session_ids=Optional[List[str]])`. Real session→permanent bridging only when `session_ids` given. |
-| `forget` | `await cognee.forget(data_id=None, dataset=None, dataset_id=None, everything=False, memory_only=False)`. `forget(dataset="x")` deletes the whole dataset; `memory_only=True` keeps raw files. |
-| `datasets.get_status` | `await cognee.datasets.get_status([dataset_ids])` — takes **dataset UUIDs**, not names; returns `{id: {pipeline: status}}`. Not needed in the synchronous flow. |
-| `prune` | `await cognee.prune.prune_data()` and `await cognee.prune.prune_system(graph=True, vector=True, metadata=False, cache=True)`. ColdCache's clean reset passes `metadata=True`; otherwise stale document metadata can deduplicate re-added files after the graph/vector stores have been deleted. |
+| `SearchType` import path | `from cognee import SearchType` works in the pinned version; ColdCache keeps a defensive import loop for compatibility |
+| `INSIGHTS` enum member | **Does not exist** in this Cognee version; ColdCache maps its `insights` mode to `TRIPLET_COMPLETION` |
+| `add` | `await cognee.add(data, dataset_name="...")` |
+| `cognify` | `await cognee.cognify(datasets=[...], ...)` and it is synchronous by default |
+| `search` | `await cognee.search(query_text, query_type=SearchType..., datasets=[...])` |
+| `recall` | `await cognee.recall(query_text, datasets=[...], ...)` |
+| `remember` | high-level helper exists, but ColdCache intentionally uses `add()` + `cognify()` for dataset control |
+| `improve` | meaningful when given `session_ids` |
+| `forget` | `forget(dataset="x")` deletes that dataset |
 
-The narrated demo and full benchmark stage their documents together, then call `cognify()`
-with `data_per_batch=1` and `chunk_size=1200`. This keeps extraction serial and each
-structured response inside the local Ollama model's context window; the default batch of
-20 launches document extractions together and can stall a local run. It also avoids
-rebuilding the whole growing graph after every document.
-`ColdCaseNode` also normalizes a model-emitted `null` description to the empty string,
-preserving Cognee's required string field without retrying an otherwise valid extraction.
+---
 
-### Local Gemma completion limitation (live-verified 2026-07-04)
+## ColdCache-specific integration notes
 
-Cognee 1.2.2 ingestion/cognify succeeds against Ollama `gemma4:e4b`, including the typed
-case schema. Its high-level `GRAPH_COMPLETION`, however, currently enters Cognee's
-session-context structured-output wrapper. Gemma spends the 4K/8K completion budget reasoning
-about that wrapper and returns `finish_reason=length`, triggering exponential Instructor retries.
-This was reproduced against the successfully rebuilt Riverside revision-12 dataset. ColdCache
-therefore uses Cognee for persistent graph construction and uses a bounded direct completion over
-the persisted, provenance-bearing semantic analysis for interactive case tools. Do not route
-latency-sensitive UI requests through high-level Cognee completion until that adapter behavior is
-fixed or a model that reliably satisfies its structured wrapper is configured.
+### 1. Case-scoped UI vs legacy global dataset
+
+The current frontend is **case-scoped** and server-resolves dataset names from `case_id`.
+
+The old narrated demo / benchmark still targets the legacy global dataset:
+```text
+coldcases
+```
+
+Do not assume that `scripts/ingest.py` populates the current case home. It only fills the legacy/global path.
+
+### 2. Recall output handling
+
+Cognee search/recall result shapes vary enough that ColdCache now extracts answer text defensively in `_extract_answer_text()`.
+
+Notable real shape handled by the code:
+```python
+[{"dataset_id": ..., "dataset_name": ..., "search_result": ["answer text"]}]
+```
+
+This is why endpoints no longer stringify whole dicts into user-facing `answer` fields.
+
+### 3. Groq → local Ollama fallback for Cognee
+
+`memory_service.recall()` and `memory_service.cognify()` now have production logic beyond the raw SDK call:
+
+- detect hard Groq failures
+- detect degraded Cognee replies such as `"Got it."`
+- temporarily swap Cognee's global LLM config to local Ollama
+- retry once
+- restore the original config afterward
+
+Relevant env vars:
+- `OLLAMA_ENDPOINT`
+- `OLLAMA_TEXT_MODEL`
+- `COLDCACHE_RECALL_TIMEOUT_S`
+- `COLDCACHE_FALLBACK_TIMEOUT_S`
+- `COLDCACHE_LOCAL_FALLBACK_TIMEOUT_S`
+- `COLDCACHE_LLM_RETRY_FLOOR_S`
+- `CACHING=false`
+
+### 4. Cognee retry-floor monkeypatch
+
+Cognee hardcodes a 240-second retry delay floor for structured-output LLM retries. ColdCache mutates the underlying stop object in place so the fallback path can trigger in seconds instead of minutes.
+
+Default in this repo:
+```text
+COLDCACHE_LLM_RETRY_FLOOR_S=8
+```
+
+### 5. Recall cache
+
+ColdCache keeps a best-effort recall cache on disk for repeated identical legacy/global queries.
+
+Relevant env vars:
+- `COLDCACHE_CACHE_DIR`
+- `COLDCACHE_DISABLE_RECALL_CACHE`
+
+---
+
+## Multimodal ingestion notes
+
+### Current behavior in `backend/main.py`
+
+| Function | Current fallback order |
+|---|---|
+| `describe_image()` | Groq vision → local Ollama vision (`OLLAMA_VISION_MODEL`) → Claude last resort |
+| `transcribe_audio()` | Groq Whisper (`LLM_TRANSCRIPTION_MODEL`) → local Whisper |
+
+This is newer than the original repo docs, which described a single-provider path.
+
+### PDF/video/image pipeline
+
+- image uploads go through `describe_image()`
+- video uploads sample frames, then reuse `describe_image()`
+- scanned PDF pages also reuse `describe_image()`
+
+So the same Groq→local fallback chain now covers all of those modalities.
+
+---
+
+## Local-model caveat still worth knowing
+
+Cognee typed ingestion works more reliably than some high-level interactive completion paths on smaller local models. That is one reason the current case tools lean on persisted derived analysis plus a compact direct completion in `backend/main.py`, instead of routing every UI interaction through Cognee's higher-level completion wrappers.
+
+---
 
 ## Backend startup behavior
-`backend/main.py` loads the repository `.env` before deciding LIVE vs DEGRADED mode. The
-documented `uvicorn backend.main:app --port 8000` command therefore uses the configured
-`LLM_API_KEY` without requiring the user to export every variable into the shell first.
 
-## Still to confirm on a live keyed run (one thing)
-`recall()` / `search()` return `list[RecallResponse]`. Confirm what a `RecallResponse`
-contains (answer text + source chunk/doc refs) so `benchmark.extract_ranked_ids` and
-`backend/main.py extract_ids` map results → gold DOC_IDs cleanly. If results don't embed
-the `DOC_ID:` strings, switch extraction to use the response's source/metadata fields.
+`backend/main.py` loads the repo `.env` itself before deciding `LIVE` vs `DEGRADED`, so:
+```bash
+uvicorn backend.main:app --port 8000
+```
+is enough once `.env` is configured.
 
-## How these were verified
-Read directly from source via `gh api` (tree) + `curl raw.githubusercontent.com`:
-`api/v1/{add,cognify,search,recall/recall,remember/remember,improve/improve,forget/forget,
-datasets/datasets,prune/prune}.py` and `modules/search/types/SearchType.py`.
-
-## Multimodal ingestion — Vision model
-Image, video (keyframe), and scanned-PDF ingestion all route through `describe_image()` in
-`backend/main.py`. This calls the local **Ollama** vision endpoint — no cloud API key needed.
-
-| Env var | Default | Purpose |
-|---|---|---|
-| `VISION_MODEL` | `llava:7b` | Ollama model with vision support |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
-
-To use a different vision model: `ollama pull <model>` then set `VISION_MODEL=<model>` in `.env`.
-Supported alternatives: `moondream`, `minicpm-v`, `llava:13b`, `bakllava`.
-
-The call goes to Ollama's `/api/chat` endpoint with the image base64-encoded in the `images` field.
-All blocking I/O runs in `asyncio.to_thread()` so the FastAPI event loop is never blocked.
-Timeout is 120 seconds (large images / first-load model warm-up can be slow).
+`GET /health` is the fastest way to confirm:
+- whether the backend is live
+- how many cases exist
+- whether fallback was recently activated

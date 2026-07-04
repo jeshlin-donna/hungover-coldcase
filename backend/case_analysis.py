@@ -1,7 +1,8 @@
-"""Deterministic, source-grounded case analysis used by every case tool.
+"""Deterministic, source-grounded case analysis used by the case-scoped tools.
 
-Cognee remains the reasoning layer. This module guarantees that the UI has a real
-entity/evidence graph and timeline even while an LLM provider is offline.
+Cognee remains the persistent graph-memory layer. This module guarantees that the UI
+still has a real graph/timeline/fallback answer source even when live model assistance
+is unavailable or intentionally bypassed for a faster case-tool response.
 """
 from __future__ import annotations
 import hashlib
