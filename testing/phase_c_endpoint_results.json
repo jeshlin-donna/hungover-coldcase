@@ -4,87 +4,105 @@
     "status": 200,
     "ok": true,
     "elapsed_s": 0.0,
-    "preview": "{\"ok\": true, \"mode\": \"live\"}"
+    "preview": "{\"ok\":true,\"mode\":\"live\"}"
   },
   {
     "endpoint": "graph",
     "status": 200,
     "ok": true,
-    "elapsed_s": 7.8,
-    "preview": "{\"nodes\": [{\"id\": \"jur:maple-heights\", \"label\": \"Maple Heights PD (Clearwater Co.)\", \"type\": \"jurisdiction\"}, {\"id\": \"jur:riverside\", \"label\": \"Riverside PD (Hale Co.)\", \"type\": \"jurisdiction\"}, {\"id\": \"case:MH-0312\", \"label\": \"MH-2023-0312 \\u00b7 2023-03-03\", \"type\": \"case\", \"date\": \"2023-03-03\"}, "
+    "elapsed_s": 31.2,
+    "preview": "{\"nodes\":[{\"id\":\"jur:maple-heights\",\"label\":\"Maple Heights PD (Clearwater Co.)\",\"type\":\"jurisdiction\"},{\"id\":\"jur:riverside\",\"label\":\"Riverside PD (Hale Co.)\",\"type\":\"jurisdiction\"},{\"id\":\"case:MH-0312\",\"label\":\"MH-2023-0312 \u00b7 2023-03-03\",\"type\":\"case\",\"date\":\"2023-03-03\"},{\"id\":\"case:RV-0788\",\"labe"
   },
   {
     "endpoint": "graph_temporal",
-    "ok": false,
-    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+    "status": 200,
+    "ok": true,
+    "elapsed_s": 25.2,
+    "preview": "{\"nodes\":[{\"id\":\"jur:maple-heights\",\"label\":\"Maple Heights PD (Clearwater Co.)\",\"type\":\"jurisdiction\"},{\"id\":\"jur:riverside\",\"label\":\"Riverside PD (Hale Co.)\",\"type\":\"jurisdiction\"},{\"id\":\"case:MH-0312\",\"label\":\"MH-2023-0312 \u00b7 2023-03-03\",\"type\":\"case\",\"date\":\"2023-03-03\"},{\"id\":\"case:RV-0788\",\"labe"
   },
   {
     "endpoint": "timeline",
     "status": 200,
     "ok": true,
     "elapsed_s": 0.0,
-    "preview": "{\"events\": [{\"date\": \"2023-03-03\", \"case\": \"MH-2023-0312\", \"jurisdiction\": \"Maple Heights\", \"title\": \"Burglary \\u2014 14 Maple Heights Dr\", \"summary\": \"Rear slider pried, doorbell cam obscured, electronics + small safe taken. Witness: dark blue sedan, partial plate 8K.\"}, {\"date\": \"2023-11-19\", \"cas"
+    "preview": "{\"events\":[{\"date\":\"2023-03-03\",\"case\":\"MH-2023-0312\",\"jurisdiction\":\"Maple Heights\",\"title\":\"Burglary \u2014 14 Maple Heights Dr\",\"summary\":\"Rear slider pried, doorbell cam obscured, electronics + small safe taken. Witness: dark blue sedan, partial plate 8K.\"},{\"date\":\"2023-11-19\",\"case\":\"RV-2023-0788\","
   },
   {
     "endpoint": "contradictions",
-    "ok": false,
-    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+    "status": 200,
+    "ok": true,
+    "elapsed_s": 50.3,
+    "preview": "{\"contradictions\":[{\"a\":\"alibi:marsh-nov19\",\"b\":\"receipt:marsh-nov19\",\"reason\":\"Alibi claims 300 miles out of state on 2023-11-19; card records place Marsh at a motel 4.2 miles from the Riverside scene at 00:48 the same night.\",\"sources\":[\"MARSH-ALIBI\",\"MARSH-RECEIPT\"],\"cognee_insight\":\"The knowledg"
   },
   {
     "endpoint": "missing_hours",
-    "ok": false,
-    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+    "status": 200,
+    "ok": true,
+    "elapsed_s": 25.2,
+    "preview": "{\"suspect\":\"Daniel R. Marsh\",\"gaps\":[{\"id\":\"gap-001\",\"start\":\"2023-03-03T01:30:00\",\"end\":\"2023-03-03T04:00:00\",\"duration_hours\":2.5,\"label\":\"Night of MH-2023-0312 burglary\",\"urgency\":\"high\",\"recommendation\":\"Pull CCTV from Maple Heights Commercial District (cameras on Oak & 3rd). Request cell tower "
   },
   {
     "endpoint": "report",
     "ok": false,
-    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=100)"
   },
   {
     "endpoint": "suspect_timeline",
-    "ok": false,
-    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+    "status": 200,
+    "ok": true,
+    "elapsed_s": 25.1,
+    "preview": "{\"suspect\":\"daniel-marsh\",\"cognee_narrative\":\"The knowledge graph is temporarily busy (the LLM provider is rate-limited) \u2014 please retry this question in about a minute.\",\"mode\":\"live\"}"
   },
   {
     "endpoint": "recall_compare",
-    "ok": false,
-    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+    "status": 200,
+    "ok": true,
+    "elapsed_s": 50.3,
+    "preview": "{\"query\":\"Which suspect appears in both the Millbrook Heights and Riverside View burglaries?\",\"dataset\":\"all\",\"results\":{\"cognee_vector\":{\"answer\":\"The knowledge graph is temporarily busy (the LLM provider is rate-limited) \u2014 please retry this question in about a minute.\",\"sources\":[],\"connects\":[]},"
   },
   {
     "endpoint": "chat",
-    "ok": false,
-    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+    "status": 200,
+    "ok": true,
+    "elapsed_s": 25.2,
+    "preview": "{\"answer\":\"The knowledge graph is temporarily busy (the LLM provider is rate-limited) \u2014 please retry this question in about a minute.\",\"sources\":[],\"mode\":\"live\"}"
   },
   {
     "endpoint": "recall",
-    "ok": false,
-    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+    "status": 200,
+    "ok": true,
+    "elapsed_s": 25.2,
+    "preview": "{\"mode\":\"graph\",\"answer\":\"The knowledge graph is temporarily busy (the LLM provider is rate-limited) \u2014 please retry this question in about a minute.\",\"sources\":[]}"
   },
   {
     "endpoint": "hunch",
     "status": 200,
     "ok": true,
-    "elapsed_s": 1.1,
-    "preview": "{\"ok\": true, \"session_id\": \"case-001\"}"
+    "elapsed_s": 1.2,
+    "preview": "{\"ok\":true,\"session_id\":\"case-001\"}"
   },
   {
     "endpoint": "resolve",
     "ok": false,
-    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=100)"
   },
   {
     "endpoint": "nexus",
     "ok": false,
-    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=100)"
   },
   {
     "endpoint": "interrogation",
-    "ok": false,
-    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+    "status": 200,
+    "ok": true,
+    "elapsed_s": 25.0,
+    "preview": "{\"suspect\":\"Daniel R. Marsh\",\"focus_case\":\"RV-2023-0788\",\"strategy\":\"Lead with the card records. He doesn't know we have the motel receipt. The alibi collapses on the second question.\",\"questions\":[{\"id\":\"q1\",\"question\":\"Mr. Marsh, where were you on the night of November 18th into the 19th, 2023?\",\""
   },
   {
     "endpoint": "whatif",
-    "ok": false,
-    "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=90)"
+    "status": 200,
+    "ok": true,
+    "elapsed_s": 25.0,
+    "preview": "{\"hypothesis\":\"What if the witness placed Marsh at the Riverside scene directly?\",\"injected_edge\":{},\"impact\":\"moderate\",\"recalculated_scores\":{\"suspect:daniel-marsh\":{\"before\":0.87,\"after\":0.79,\"delta\":-0.08,\"reason\":\"Vehicle witness testimony weakened; forensic tool match still holds\"},\"vehicle:bl"
   }
 ]
