@@ -10,7 +10,9 @@ durable original files, evidence/revision/job records, restart recovery, backgro
 ingestion, immutable per-case Cognee dataset names, and graph revision tracking. The blank case
 home, case creation, reload-rehydrated import/review queue, retries/cancellation, and case-scoped
 graph/chat/suggestions/stats plus SSE/poll reconciliation are now implemented. Remaining tool routes, caching, and lifecycle
-hardening remain in progress. Design:
+hardening now include idempotent state transitions, duplicate skipping, persisted drafts, bounded
+streaming uploads, leases/heartbeats, replayable events, archive/restore, and guarded deletion.
+Evidence-level removal after Cognee ingestion still requires a verified SDK delete or dataset rebuild. Design:
 [`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md).
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo

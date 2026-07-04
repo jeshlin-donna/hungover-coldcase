@@ -11,6 +11,7 @@ export default function CaseImportPanel({ caseId, onGraphUpdated, onNext }) {
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef();
+  const draftTimers = useRef({});
 
   async function refresh() {
     try {
@@ -37,6 +38,15 @@ export default function CaseImportPanel({ caseId, onGraphUpdated, onNext }) {
     catch (e) { setError(e.message); } finally { setUploading(false); }
   }
   async function confirm(item) { try { await api.confirmCaseEvidence(caseId, item.id, drafts[item.id], item.context || ""); await refresh(); } catch (e) { setError(e.message); } }
+  function editDraft(item, value) {
+    setDrafts((current) => ({ ...current, [item.id]: value }));
+    clearTimeout(draftTimers.current[item.id]);
+    draftTimers.current[item.id] = setTimeout(() => {
+      api.saveEvidenceDraft(caseId, item.id, value, item.context || "", item.updated_at)
+        .then((saved) => setData((current) => ({ ...current, evidence: current.evidence.map((entry) => entry.id === saved.id ? saved : entry) })))
+        .catch((e) => setError(`Draft save failed: ${e.message}`));
+    }, 500);
+  }
 
   return <div className="panel upload-panel durable-import">
     <h2>Import Case Files and Data</h2><p className="muted-copy">Jobs belong to this case and continue if you reload or close this page.</p>
@@ -51,7 +61,7 @@ export default function CaseImportPanel({ caseId, onGraphUpdated, onNext }) {
     <div className="durable-evidence-list">{data.evidence.map((item) => { const job = latestJobs[item.id]; return <div className="batch-file-card" key={item.id}>
       <div className="batch-file-header"><div className="pending-meta"><strong>{item.original_filename}</strong><span className="pending-size">{item.modality} · {item.status.replaceAll("_", " ")}</span></div><span className="batch-status">{item.status.replaceAll("_", " ")}</span></div>
       {job && ["queued", "running"].includes(job.status) && <div className="file-progress-wrap"><div className="file-progress-label"><span>{job.stage.replaceAll("_", " ")}</span><span>{job.progress}%</span></div><div className="file-progress-track"><div className="file-progress-fill" style={{ width: `${job.progress}%` }} /></div></div>}
-      {item.status === "awaiting_review" && <div className="evidence-review-block"><div className="evidence-review-heading">Verify extracted evidence</div><textarea rows={9} value={drafts[item.id] || ""} onChange={(e) => setDrafts({ ...drafts, [item.id]: e.target.value })} /><button className="next-btn" onClick={() => confirm(item)}>Confirm and ingest</button></div>}
+      {item.status === "awaiting_review" && <div className="evidence-review-block"><div className="evidence-review-heading">Verify extracted evidence</div><textarea rows={9} value={drafts[item.id] || ""} onChange={(e) => editDraft(item, e.target.value)} /><small style={{color:"var(--muted)"}}>Draft saves automatically.</small><button className="next-btn" onClick={() => confirm(item)}>Confirm and ingest</button></div>}
       {["analysis_failed", "ingestion_failed"].includes(item.status) && <div><div className="upload-error">{item.error_message}</div><button className="upload-btn" onClick={() => api.retryCaseEvidence(caseId, item.id).then(refresh)}>Retry</button></div>}
       {["queued_analysis", "analyzing", "queued_ingestion", "ingesting"].includes(item.status) && <button className="dismiss-btn" onClick={() => api.cancelCaseEvidence(caseId, item.id).then(refresh)}>Cancel</button>}
     </div>; })}</div>

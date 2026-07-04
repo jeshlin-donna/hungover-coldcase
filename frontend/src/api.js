@@ -17,6 +17,10 @@ async function post(path, body) {
   if (!r.ok) throw new Error(`${path} -> ${r.status}`);
   return r.json();
 }
+async function patch(path, body) {
+  const r = await fetch(`${BASE}${path}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json(); if (!r.ok) throw new Error(data.detail || `${path} -> ${r.status}`); return data;
+}
 
 export const api = {
   cases: () => get("/cases"),
@@ -36,6 +40,11 @@ export const api = {
   },
   confirmCaseEvidence: (caseId, evidenceId, reviewed_text, context) =>
     post(`/cases/${caseId}/evidence/${evidenceId}/confirm`, { reviewed_text, context }),
+  saveEvidenceDraft: (caseId, evidenceId, reviewed_text, context, expected_updated_at) =>
+    patch(`/cases/${caseId}/evidence/${evidenceId}/draft`, { reviewed_text, context, expected_updated_at }),
+  archiveCase: (caseId) => post(`/cases/${caseId}/archive`, {}),
+  restoreCase: (caseId) => post(`/cases/${caseId}/restore`, {}),
+  deleteCase: (caseId) => fetch(`${BASE}/cases/${caseId}`, { method: "DELETE" }).then((r) => { if (!r.ok) throw new Error(`Delete failed (${r.status})`); }),
   retryCaseEvidence: (caseId, evidenceId) => post(`/cases/${caseId}/evidence/${evidenceId}/retry`, {}),
   cancelCaseEvidence: (caseId, evidenceId) => post(`/cases/${caseId}/evidence/${evidenceId}/cancel`, {}),
   health: () => get("/health"),

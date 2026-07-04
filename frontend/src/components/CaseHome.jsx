@@ -19,6 +19,8 @@ export default function CaseHome({ onOpen }) {
       onOpen(created);
     } catch (e) { setError(e.message || "Could not create case."); }
   }
+  async function archive(event, item) { event.stopPropagation(); await (item.status === "archived" ? api.restoreCase(item.id) : api.archiveCase(item.id)); load(); }
+  async function remove(event, item) { event.stopPropagation(); if (!window.confirm(`Delete case "${item.title}" and its stored evidence?`)) return; try { await api.deleteCase(item.id); load(); } catch (e) { setError(e.message); } }
 
   return <div className="case-home">
     <div className="case-home-header"><div><div className="header-logo">🔍</div><h1>ColdCache</h1><p>Case memory that survives the browser.</p></div>
@@ -38,10 +40,11 @@ export default function CaseHome({ onOpen }) {
       <button className="next-btn" type="submit" disabled={!form.title.trim()}>Create and open case</button>
     </form>}
     {!creating && cases.length > 0 && <div className="case-grid">{cases.map((item) =>
-      <button className="case-card" key={item.id} onClick={() => onOpen(item)}>
+      <div className="case-card" role="button" tabIndex="0" key={item.id} onClick={() => onOpen(item)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(item); }}>
         <span className="case-card-status">{item.status}</span><h3>{item.title}</h3>
         <p>{item.reference_number || item.jurisdiction || "No reference details"}</p>
         <div><span>{item.evidence_count || 0} evidence</span><span>{item.active_jobs || 0} active jobs</span></div>
-      </button>)}</div>}
+        <div style={{marginTop:12}}><button type="button" className="dismiss-btn" onClick={(e) => archive(e,item)}>{item.status === "archived" ? "Restore" : "Archive"}</button><button type="button" className="dismiss-btn" onClick={(e) => remove(e,item)}>Delete</button></div>
+      </div>)}</div>}
   </div>;
 }

@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,9 +64,28 @@ def init_db() -> None:
           created_at TEXT NOT NULL, confirmed_at TEXT NOT NULL,
           UNIQUE(evidence_id, revision_number)
         );
+        CREATE TABLE IF NOT EXISTS job_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, case_id TEXT NOT NULL,
+          job_id TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+          version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL
+        );
         """)
-        # A crashed process must not leave work permanently running.
-        con.execute("UPDATE jobs SET status='queued', stage='recovering', progress=0, updated_at=? WHERE status='running'", (now(),))
+        columns = {row[1] for row in con.execute("PRAGMA table_info(jobs)")}
+        for name, definition in {
+            "lease_owner": "TEXT", "lease_expires_at": "TEXT", "heartbeat_at": "TEXT",
+            "idempotency_key": "TEXT"
+        }.items():
+            if name not in columns: con.execute(f"ALTER TABLE jobs ADD COLUMN {name} {definition}")
+        con.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_active_job ON jobs(evidence_id,kind) WHERE status IN ('queued','running')")
+        con.execute("INSERT OR IGNORE INTO schema_migrations VALUES (1,?)", (now(),))
+        # Only abandoned leases recover; a second healthy process must not steal work.
+        stamp = now()
+        con.execute("""UPDATE jobs SET status='queued',stage='recovering',progress=0,
+          lease_owner=NULL,lease_expires_at=NULL,updated_at=?
+          WHERE status='running' AND (lease_expires_at IS NULL OR lease_expires_at < ?)""", (stamp, stamp))
 
 
 def row_dict(row):
@@ -111,27 +131,43 @@ def update_case(case_id: str, payload: dict) -> dict | None:
     return get_case(case_id)
 
 
+def archive_case(case_id: str, archived: bool) -> dict | None:
+    return update_case(case_id, {"status": "archived" if archived else "open"})
+
+
 def save_evidence(case_id: str, filename: str, content: bytes, media_type: str | None,
                   modality: str, context: str = "") -> tuple[dict, dict]:
-    evidence_id = str(uuid.uuid4()); stamp = now()
     digest = hashlib.sha256(content).hexdigest()
+    temp_dir = ROOT / "data" / "upload_tmp"; temp_dir.mkdir(parents=True, exist_ok=True)
+    temp = temp_dir / str(uuid.uuid4()); temp.write_bytes(content)
+    return save_evidence_file(case_id, filename, temp, len(content), digest, media_type, modality, context)
+
+
+def save_evidence_file(case_id: str, filename: str, temp: Path, size_bytes: int, digest: str,
+                       media_type: str | None, modality: str, context: str = "") -> tuple[dict, dict | None]:
+    evidence_id = str(uuid.uuid4()); stamp = now()
+    with connect() as con:
+        duplicate = con.execute("SELECT * FROM evidence_items WHERE case_id=? AND sha256=? AND status!='deleted'", (case_id, digest)).fetchone()
+    if duplicate:
+        temp.unlink(missing_ok=True)
+        item = dict(duplicate); item["duplicate_of"] = {"id": item["id"], "original_filename": item["original_filename"], "status": item["status"]}
+        return item, None
     suffix = Path(filename).suffix.lower()[:12]
     relative = Path("cases") / case_id / "originals" / f"{evidence_id}{suffix}"
     target = ROOT / "data" / relative
     target.parent.mkdir(parents=True, exist_ok=True)
-    temp = target.with_suffix(target.suffix + ".tmp")
-    temp.write_bytes(content); temp.replace(target)
+    target_temp = target.with_suffix(target.suffix + ".tmp")
+    temp.replace(target_temp); target_temp.replace(target)
     with connect() as con:
-        duplicate = con.execute("SELECT id,original_filename,status FROM evidence_items WHERE case_id=? AND sha256=?", (case_id, digest)).fetchone()
         con.execute("""INSERT INTO evidence_items
           (id,case_id,original_filename,media_type,modality,size_bytes,sha256,storage_key,context,status,created_at,updated_at)
           VALUES (?,?,?,?,?,?,?,?,?,'queued_analysis',?,?)""",
-          (evidence_id, case_id, filename, media_type, modality, len(content), digest, str(relative), context, stamp, stamp))
+          (evidence_id, case_id, filename, media_type, modality, size_bytes, digest, str(relative), context, stamp, stamp))
         job_id = str(uuid.uuid4())
         con.execute("INSERT INTO jobs (id,case_id,evidence_id,kind,status,stage,progress,created_at,updated_at) VALUES (?,?,?,'analyze','queued','queued',0,?,?)",
                     (job_id, case_id, evidence_id, stamp, stamp))
         con.execute("UPDATE cases SET last_activity_at=?,updated_at=? WHERE id=?", (stamp, stamp, case_id))
-    item = get_evidence(evidence_id); item["duplicate_of"] = dict(duplicate) if duplicate else None
+    item = get_evidence(evidence_id); item["duplicate_of"] = None
     return item, get_job(job_id)
 
 
@@ -158,21 +194,31 @@ def list_jobs(case_id: str) -> list[dict]:
         return [dict(r) for r in con.execute("SELECT * FROM jobs WHERE case_id=? ORDER BY created_at DESC", (case_id,)).fetchall()]
 
 
-def claim_job() -> dict | None:
+def _event(con, job_id: str, case_id: str, event_type: str, payload: dict) -> None:
+    con.execute("INSERT INTO job_events(case_id,job_id,event_type,payload,created_at) VALUES (?,?,?,?,?)",
+                (case_id, job_id, event_type, json.dumps(payload), now()))
+
+
+def claim_job(worker_id: str = "worker") -> dict | None:
     with connect() as con:
         con.execute("BEGIN IMMEDIATE")
         row = con.execute("SELECT * FROM jobs WHERE status='queued' AND cancel_requested=0 ORDER BY created_at LIMIT 1").fetchone()
         if not row: return None
         stamp = now()
-        con.execute("UPDATE jobs SET status='running',stage='starting',progress=2,attempt=attempt+1,started_at=COALESCE(started_at,?),updated_at=? WHERE id=? AND status='queued'", (stamp, stamp, row["id"]))
+        lease = (datetime.now(timezone.utc) + timedelta(seconds=45)).isoformat()
+        con.execute("UPDATE jobs SET status='running',stage='starting',progress=2,attempt=attempt+1,started_at=COALESCE(started_at,?),updated_at=?,lease_owner=?,lease_expires_at=?,heartbeat_at=? WHERE id=? AND status='queued'", (stamp, stamp, worker_id, lease, stamp, row["id"]))
         evidence_status = "analyzing" if row["kind"] == "analyze" else "ingesting"
         con.execute("UPDATE evidence_items SET status=?,updated_at=? WHERE id=?", (evidence_status, stamp, row["evidence_id"]))
+        _event(con, row["id"], row["case_id"], "job.started", {"stage": "starting", "progress": 2})
     return get_job(row["id"])
 
 
 def job_progress(job_id: str, stage: str, progress: int) -> None:
     with connect() as con:
-        con.execute("UPDATE jobs SET stage=?,progress=?,updated_at=? WHERE id=?", (stage, progress, now(), job_id))
+        stamp = now(); lease = (datetime.now(timezone.utc) + timedelta(seconds=45)).isoformat()
+        row = con.execute("SELECT case_id FROM jobs WHERE id=?", (job_id,)).fetchone()
+        con.execute("UPDATE jobs SET stage=?,progress=?,updated_at=?,heartbeat_at=?,lease_expires_at=? WHERE id=?", (stage, progress, stamp, stamp, lease, job_id))
+        if row: _event(con, job_id, row["case_id"], "job.progress", {"stage": stage, "progress": progress})
 
 
 def is_cancel_requested(job_id: str) -> bool:
@@ -186,6 +232,7 @@ def finish_cancelled(job: dict) -> None:
     with connect() as con:
         con.execute("UPDATE evidence_items SET status='cancelled',updated_at=? WHERE id=?", (stamp, job["evidence_id"]))
         con.execute("UPDATE jobs SET status='cancelled',stage='cancelled',finished_at=?,updated_at=? WHERE id=?", (stamp, stamp, job["id"]))
+        _event(con, job["id"], job["case_id"], "job.cancelled", {})
 
 
 def finish_analysis(job: dict, output: str) -> None:
@@ -193,17 +240,21 @@ def finish_analysis(job: dict, output: str) -> None:
     with connect() as con:
         con.execute("UPDATE evidence_items SET model_output=?,reviewed_text=?,status='awaiting_review',error_message=NULL,updated_at=? WHERE id=?", (output, output, stamp, job["evidence_id"]))
         con.execute("UPDATE jobs SET status='succeeded',stage='awaiting_review',progress=100,finished_at=?,updated_at=? WHERE id=?", (stamp, stamp, job["id"]))
+        _event(con, job["id"], job["case_id"], "job.succeeded", {"stage": "awaiting_review"})
 
 
 def queue_ingestion(case_id: str, evidence_id: str, reviewed_text: str, context: str) -> dict:
     stamp = now(); job_id = str(uuid.uuid4())
     with connect() as con:
-        current = con.execute("SELECT model_output FROM evidence_items WHERE id=? AND case_id=?", (evidence_id, case_id)).fetchone()
+        con.execute("BEGIN IMMEDIATE")
+        current = con.execute("SELECT model_output,status FROM evidence_items WHERE id=? AND case_id=?", (evidence_id, case_id)).fetchone()
         if not current: raise KeyError("Evidence not found")
+        if current["status"] != "awaiting_review": raise ValueError(f"Evidence cannot be confirmed from {current['status']}")
         rev = con.execute("SELECT COUNT(*) FROM evidence_revisions WHERE evidence_id=?", (evidence_id,)).fetchone()[0] + 1
         con.execute("INSERT INTO evidence_revisions VALUES (?,?,?,?,?,?,?,?)", (str(uuid.uuid4()), evidence_id, rev, current["model_output"] or "", reviewed_text, context, stamp, stamp))
         con.execute("UPDATE evidence_items SET reviewed_text=?,context=?,status='queued_ingestion',updated_at=? WHERE id=?", (reviewed_text, context, stamp, evidence_id))
         con.execute("INSERT INTO jobs (id,case_id,evidence_id,kind,status,stage,progress,created_at,updated_at) VALUES (?,?,?,'ingest','queued','queued',0,?,?)", (job_id, case_id, evidence_id, stamp, stamp))
+        _event(con, job_id, case_id, "job.queued", {"kind": "ingest"})
     return get_job(job_id)
 
 
@@ -213,6 +264,7 @@ def finish_ingestion(job: dict) -> None:
         con.execute("UPDATE evidence_items SET status='ingested',error_message=NULL,updated_at=? WHERE id=?", (stamp, job["evidence_id"]))
         con.execute("UPDATE jobs SET status='succeeded',stage='indexed',progress=100,finished_at=?,updated_at=? WHERE id=?", (stamp, stamp, job["id"]))
         con.execute("UPDATE cases SET graph_revision=graph_revision+1,last_activity_at=?,updated_at=? WHERE id=?", (stamp, stamp, job["case_id"]))
+        _event(con, job["id"], job["case_id"], "job.succeeded", {"stage": "indexed"})
 
 
 def fail_job(job: dict, message: str) -> None:
@@ -220,23 +272,76 @@ def fail_job(job: dict, message: str) -> None:
     with connect() as con:
         con.execute("UPDATE evidence_items SET status=?,error_message=?,updated_at=? WHERE id=?", (status, message[:1000], stamp, job["evidence_id"]))
         con.execute("UPDATE jobs SET status='failed',stage='failed',error_message=?,finished_at=?,updated_at=? WHERE id=?", (message[:1000], stamp, stamp, job["id"]))
+        _event(con, job["id"], job["case_id"], "job.failed", {"error": message[:1000]})
 
 
 def retry_evidence(case_id: str, evidence_id: str, kind: str) -> dict:
     stamp = now(); job_id = str(uuid.uuid4())
     with connect() as con:
-        item = con.execute("SELECT id FROM evidence_items WHERE id=? AND case_id=?", (evidence_id, case_id)).fetchone()
+        con.execute("BEGIN IMMEDIATE")
+        item = con.execute("SELECT id,status FROM evidence_items WHERE id=? AND case_id=?", (evidence_id, case_id)).fetchone()
         if not item: raise KeyError("Evidence not found")
+        expected = "analysis_failed" if kind == "analyze" else "ingestion_failed"
+        if item["status"] != expected: raise ValueError(f"Retry is only allowed from {expected}")
         con.execute("UPDATE evidence_items SET status=?,error_message=NULL,updated_at=? WHERE id=?", (f"queued_{'analysis' if kind == 'analyze' else 'ingestion'}", stamp, evidence_id))
         con.execute("INSERT INTO jobs (id,case_id,evidence_id,kind,status,stage,progress,created_at,updated_at) VALUES (?,?,?,?,'queued','queued',0,?,?)", (job_id, case_id, evidence_id, kind, stamp, stamp))
     return get_job(job_id)
 
 
-def cancel_job(case_id: str, evidence_id: str) -> None:
+def cancel_job(case_id: str, evidence_id: str) -> bool:
     stamp = now()
     with connect() as con:
-        con.execute("UPDATE jobs SET cancel_requested=1,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,updated_at=? WHERE case_id=? AND evidence_id=? AND status IN ('queued','running')", (stamp, case_id, evidence_id))
+        active = con.execute("SELECT * FROM jobs WHERE case_id=? AND evidence_id=? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1", (case_id, evidence_id)).fetchone()
+        if not active: return False
+        if active["kind"] == "ingest" and active["status"] == "running": return False
+        con.execute("UPDATE jobs SET cancel_requested=1,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,updated_at=? WHERE id=?", (stamp, active["id"]))
         con.execute("UPDATE evidence_items SET status='cancelled',updated_at=? WHERE id=? AND case_id=?", (stamp, evidence_id, case_id))
+        _event(con, active["id"], case_id, "job.cancel_requested", {})
+        return True
+
+
+def save_review_draft(case_id: str, evidence_id: str, reviewed_text: str, context: str,
+                      expected_updated_at: str | None = None) -> dict:
+    with connect() as con:
+        row = con.execute("SELECT status FROM evidence_items WHERE id=? AND case_id=?", (evidence_id, case_id)).fetchone()
+        if not row: raise KeyError("Evidence not found")
+        if row["status"] != "awaiting_review": raise ValueError("Draft is editable only while awaiting review")
+        stamp = now()
+        if expected_updated_at:
+            changed = con.execute("UPDATE evidence_items SET reviewed_text=?,context=?,updated_at=? WHERE id=? AND updated_at=?",
+                                  (reviewed_text, context, stamp, evidence_id, expected_updated_at)).rowcount
+            if not changed: raise ValueError("Review changed in another tab; refresh before editing.")
+        else:
+            con.execute("UPDATE evidence_items SET reviewed_text=?,context=?,updated_at=? WHERE id=?", (reviewed_text, context, stamp, evidence_id))
+    return get_evidence(evidence_id)
+
+
+def list_events(case_id: str, after_id: int = 0) -> list[dict]:
+    with connect() as con:
+        rows = con.execute("SELECT * FROM job_events WHERE case_id=? AND id>? ORDER BY id LIMIT 200", (case_id, after_id)).fetchall()
+    return [{**dict(r), "payload": json.loads(r["payload"])} for r in rows]
+
+
+def delete_evidence(case_id: str, evidence_id: str, allow_ingested: bool = False) -> bool:
+    with connect() as con:
+        row = con.execute("SELECT * FROM evidence_items WHERE id=? AND case_id=?", (evidence_id, case_id)).fetchone()
+        if not row: return False
+        if row["status"] == "ingested" and not allow_ingested: raise ValueError("Ingested evidence requires a case graph rebuild")
+        if con.execute("SELECT 1 FROM jobs WHERE evidence_id=? AND status IN ('queued','running')", (evidence_id,)).fetchone(): raise ValueError("Evidence has active work")
+        con.execute("DELETE FROM evidence_items WHERE id=?", (evidence_id,))
+        if row["status"] == "ingested": con.execute("UPDATE cases SET graph_revision=graph_revision+1,updated_at=?,last_activity_at=? WHERE id=?", (now(), now(), case_id))
+    path = storage_path(dict(row)); path.unlink(missing_ok=True)
+    return True
+
+
+def delete_case_records(case_id: str) -> bool:
+    with connect() as con:
+        if con.execute("SELECT 1 FROM jobs WHERE case_id=? AND status IN ('queued','running')", (case_id,)).fetchone(): raise ValueError("Case has active work")
+        found = con.execute("SELECT 1 FROM cases WHERE id=?", (case_id,)).fetchone()
+        if not found: return False
+        con.execute("DELETE FROM cases WHERE id=?", (case_id,))
+    shutil.rmtree(ROOT / "data" / "cases" / case_id, ignore_errors=True)
+    return True
 
 
 def storage_path(item: dict) -> Path:

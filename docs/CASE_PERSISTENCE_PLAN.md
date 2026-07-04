@@ -273,23 +273,23 @@ reversible; delete is visually and operationally separate.
 ### Phase 2 — durable ingestion jobs
 
 1. 🔄 Durable evidence/revision/job tables are active for v2 routes; legacy collections remain until route migration.
-2. 🔄 Durable IDs, startup recovery, retry, and cancel are active; leases/heartbeat remain.
-3. Refactor extractors to emit page/frame/stage checkpoints.
+2. ✅ Durable IDs, leases/heartbeats, startup recovery, guarded retry, and safe cancellation are active.
+3. 🔄 Extractors emit durable stages; page/frame-granular checkpoints remain provider-dependent.
 4. Queue confirmation/cognification and serialize writes per case.
 5. ✅ Server-rehydrated import queue uses SSE with polling fallback.
 
 ### Phase 3 — case-scope every feature
 
 1. 🔄 `case_id` is required for graph, chat, suggestions, stats, and v2 evidence; remaining tools remain.
-2. Replace global `DATASET` use with repository-resolved `dataset_name`.
-3. Add graph revisions and case-scoped caches.
-4. Remove deprecated global routes and fixed Daniel Marsh assumptions.
+2. ✅ V2 case routes resolve immutable dataset names server-side.
+3. 🔄 Graph revisions are active; derived response caching remains optional.
+4. 🔄 All tools now have case-scoped routes; deprecated demo routes remain for explicit demo compatibility.
 
 ### Phase 4 — lifecycle hardening
 
-1. Implement archive/restore and deletion state machines.
+1. ✅ Archive/restore and guarded case/evidence deletion are implemented.
 2. Verify evidence-level Cognee deletion or safe dataset rebuild.
-3. Add optimistic concurrency, idempotency, quotas, audit, and retention settings.
+3. 🔄 Idempotency, upload quotas, revision provenance, and event audit are active; authentication-era retention remains.
 4. Add Postgres/object-storage/dedicated-worker deployment when needed.
 
 ## Verification gates
