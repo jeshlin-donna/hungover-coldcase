@@ -14,7 +14,6 @@ const NODE_COLORS = {
   evidence: "#d2a8ff",
   person: "#f85149",
   location: "#8b949e",
-  document: "#79c0ff",
 };
 
 const TYPE_LABELS = {
@@ -29,7 +28,6 @@ const TYPE_LABELS = {
   evidence: "Uploaded evidence",
   person: "Person",
   location: "Location",
-  document: "Source document",
 };
 
 // A distinct glyph per node type so the graph reads at a glance even for
@@ -47,7 +45,6 @@ const NODE_ICONS = {
   evidence: "📎",
   person: "👤",
   location: "📍",
-  document: "📄",
 };
 
 // Base radius per type — suspects and cases are the anchors of the story,
@@ -113,6 +110,8 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
   const [reveal, setReveal] = useState(false);
   const [expunging, setExpunging] = useState(false);
   const [expungeNote, setExpungeNote] = useState("");
+  const [reindexing, setReindexing] = useState(false);
+  const [reindexNote, setReindexNote] = useState("");
   const [selectedNode, setSelectedNode] = useState(null);
   const [hoverNode, setHoverNode] = useState(null);
   const [hiddenTypes, setHiddenTypes] = useState(() => new Set());
@@ -165,7 +164,7 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
 
     const links = graph.edges
       .filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target))
-      .map((e) => ({ source: e.source, target: e.target, relation: e.relation, _c: false }));
+      .map((e) => ({ ...e, source: e.source, target: e.target, relation: e.relation, _c: false }));
     if (reveal) {
       for (const c of graph.contradictions || []) {
         if (visibleIds.has(c.a) && visibleIds.has(c.b)) {
@@ -247,6 +246,27 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
   }, []);
 
   const contradictions = graph.contradictions || [];
+  const visibleLegendTypes = useMemo(
+    () => Object.keys(NODE_COLORS).filter((type) => fullGraph.nodes?.some((node) => node.type === type)),
+    [fullGraph.nodes]
+  );
+
+  async function handleReindex() {
+    setReindexing(true);
+    setReindexNote("Rebuilding verified case knowledge…");
+    try {
+      const result = await api.reindexCase(caseId);
+      const refreshed = await api.graph(caseId);
+      setFullGraph(refreshed);
+      setGraph(refreshed);
+      onGraphLoaded?.(refreshed);
+      setReindexNote(`Knowledge rebuilt from ${result.evidence_count} verified files.`);
+    } catch (error) {
+      setReindexNote(error.message || "Knowledge rebuild failed.");
+    } finally {
+      setReindexing(false);
+    }
+  }
 
   // Fit the whole graph into view whenever the node/link set changes —
   // otherwise react-force-graph-2d keeps its default zoom level and only
@@ -265,7 +285,7 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
     <div className="panel">
       <div className="row" style={{ marginBottom: 10 }}>
         <p style={{ margin: 0, color: "var(--muted)", fontSize: 14, maxWidth: 560 }}>
-          {caseId ? "People, evidence, vehicles, locations, and source documents extracted from this case." : "The case web. Tool signature, vehicle, and MO bridge two jurisdictions that never shared a database."} <span className="muted">Hover a node to trace its
+          {caseId ? "Verified people, evidence, vehicles, and locations. Files remain provenance—not graph clutter." : "The case web. Tool signature, vehicle, and MO bridge two jurisdictions that never shared a database."} <span className="muted">Hover a node to trace its
           connections · click for details · click a legend item to hide a node type.</span>
         </p>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -278,6 +298,9 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
           {!caseId && <button className="danger" onClick={handleExpunge} disabled={expunging}>
             {expunging ? "Expunging…" : "Expunge Riverside (forget())"}
           </button>}
+          {caseId && <button onClick={handleReindex} disabled={reindexing} title="Rebuild Cognee and this board from investigator-confirmed evidence">
+            {reindexing ? "Rebuilding…" : "Rebuild knowledge"}
+          </button>}
           <button
             title="Re-center and fit the whole graph in view"
             onClick={() => fgRef.current?.zoomToFit(400, 60)}
@@ -288,7 +311,7 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
       </div>
 
       {/* Temporal slider — filters which graph nodes/edges are visible via GET /graph/temporal?time=X */}
-      <div className="temporal-slider-wrap">
+      {!caseId && <div className="temporal-slider-wrap">
         <div className="temporal-slider-label-row">
           <span className="temporal-slider-label">Temporal filter</span>
           <span className="temporal-slider-date">
@@ -315,7 +338,9 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
           <span>Jan 2023</span>
           <span>Dec 2025</span>
         </div>
-      </div>
+      </div>}
+
+      {reindexNote && <p className="note" role="status">{reindexing ? "⏳" : "✓"} {reindexNote}</p>}
 
       {reveal && contradictions.map((c, i) => (
         <p key={i} className="contradiction">
@@ -369,7 +394,7 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
             const start = typeof link.source === "object" ? link.source : nodes.find((n) => n.id === link.source);
             const end = typeof link.target === "object" ? link.target : nodes.find((n) => n.id === link.target);
             if (!start || !end || start.x == null || end.x == null) return;
-            const label = link.relation || link.label || "";
+            const label = (link.relation || link.label || "").replaceAll("_", " ");
             if (!label) return;
             const dx = end.x - start.x;
             const dy = end.y - start.y;
@@ -496,7 +521,9 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
       </div>
 
       <div className="legend">
-        {Object.entries(NODE_COLORS).map(([k, c]) => (
+        {visibleLegendTypes.map((k) => {
+          const c = NODE_COLORS[k];
+          return (
           <button
             key={k}
             className={`legend-item legend-toggle${hiddenTypes.has(k) ? " legend-off" : ""}`}
@@ -506,7 +533,8 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
             <i style={{ background: c }} />
             {NODE_ICONS[k]} {TYPE_LABELS[k] || k}
           </button>
-        ))}
+          );
+        })}
         <span className="legend-item">
           <i style={{ background: "#f85149", width: 18, height: 3, borderRadius: 1.5, display: "inline-block", verticalAlign: "middle", marginRight: 5 }} />
           contradiction
@@ -524,7 +552,7 @@ function NodeDetail({ node, edges, nodesById, onClose, onSelect }) {
       const otherId = e.source === node.id ? e.target : e.source;
       const other = nodesById?.[otherId];
       const direction = e.source === node.id ? "→" : "←";
-      return { otherId, other, relation: e.relation, direction };
+      return { otherId, other, relation: e.relation, direction, sources: e.sources || [], confidence: e.confidence };
     });
 
   return (
@@ -542,6 +570,9 @@ function NodeDetail({ node, edges, nodesById, onClose, onSelect }) {
       </span>
       <h4>{node.label}</h4>
       <div className="nd-id">{node.id}</div>
+      {(node.sources || []).length > 0 && (
+        <div className="nd-id">Supported by: {node.sources.join(", ")}</div>
+      )}
 
       {connections.length > 0 && (
         <div className="nd-connections">
@@ -556,10 +587,11 @@ function NodeDetail({ node, edges, nodesById, onClose, onSelect }) {
                   onClick={() => c.other && onSelect?.(c.other)}
                   disabled={!c.other}
                 >
-                  <span className="nd-connection-rel">{c.direction} {c.relation}</span>
+                  <span className="nd-connection-rel">{c.direction} {c.relation.replaceAll("_", " ")}</span>
                   <span className="nd-connection-label">
                     {NODE_ICONS[c.other?.type] || ""} {c.other?.label || c.otherId}
                   </span>
+                  {c.sources.length > 0 && <span className="nd-id">Source: {c.sources.join(", ")} · {c.confidence}</span>}
                 </button>
               </li>
             ))}

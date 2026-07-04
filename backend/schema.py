@@ -33,7 +33,7 @@ from pydantic import Field, field_validator
 # Literal overrides (Pydantic v2 allows narrowing a field's type in a subclass).
 from cognee.shared.data_models import Node, Edge, KnowledgeGraph
 
-NodeType = Literal["Person", "Location", "TimePoint", "Evidence", "Object"]
+NodeType = Literal["Case", "Person", "Location", "TimePoint", "Evidence", "Object"]
 
 RelationshipName = Literal[
     "WAS_AT",       # Person -> Location
@@ -41,6 +41,12 @@ RelationshipName = Literal[
     "DEPICTS",      # Evidence -> Person | Object | Location
     "REPORTED_BY",  # Evidence -> Person (lineage of who made the claim)
     "CONTRADICTS",  # Evidence -> Evidence (machine-flagged conflict)
+    "INVOLVED_IN",  # Person -> Case (role/interest, not guilt)
+    "OCCURRED_AT",  # Case -> Location
+    "HAS_EVIDENCE", # Case -> Evidence
+    "OBSERVED_AT",  # Person/Object -> Location, when explicitly reported
+    "RELATES_TO",   # Evidence -> Person/Object/Location with provenance
+    "EXAMINED",     # Person -> Evidence
 ]
 
 
@@ -92,13 +98,19 @@ COLD_CASE_EXTRACTION_PROMPT = """\
 You are extracting a knowledge graph from police case files (narratives, forensic reports,
 witness statements, financial/alibi records) for a cold-case investigation tool.
 
-Only use these node types: Person, Location, TimePoint, Evidence, Object.
+Only use these node types: Case, Person, Location, TimePoint, Evidence, Object.
 Only use these relationship names between nodes:
   WAS_AT      (Person -> Location)       — an individual's presence at a place
   AT_TIME     (Location -> TimePoint)    — binds a spatial presence to a chronological window
   DEPICTS     (Evidence -> Person|Object|Location) — evidence confirms an entity was present
   REPORTED_BY (Evidence -> Person)       — tracks who made a claim/statement (lineage)
   CONTRADICTS (Evidence -> Evidence)     — two pieces of evidence assert incompatible facts
+  INVOLVED_IN (Person -> Case)           — stated role/person of interest; never implies guilt
+  OCCURRED_AT (Case -> Location)         — incident location explicitly stated in the record
+  HAS_EVIDENCE (Case -> Evidence)        — verified evidence belongs to this case
+  OBSERVED_AT (Person|Object -> Location)— an explicit sourced observation
+  RELATES_TO (Evidence -> Person|Object|Location) — a source-backed evidentiary relationship
+  EXAMINED (Person -> Evidence)           — named examiner handled/analyzed the evidence
 
 For every Person, capture role (Suspect/Witness/Victim) and status if stated.
 For every Location, capture coordinates/address if stated.
@@ -107,5 +119,6 @@ For every Evidence node, capture its type (Audio/Video/Photo/Text) and, if infer
 reliability_score between 0 and 1 (direct forensic/digital records score higher than verbal
 alibi claims).
 Do not invent facts that are not present in the source text. Prefer precise, sourced edges
-over speculative ones.
+over speculative ones. Never create a relationship merely because two entities appear in the
+same document. Preserve CASE_ID, EVIDENCE_ID, and SOURCE_FILE provenance in descriptions.
 """

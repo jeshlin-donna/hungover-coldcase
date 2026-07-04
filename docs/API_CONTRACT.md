@@ -23,6 +23,7 @@ Base URL: `http://localhost:8000`. All responses JSON. CORS open in dev.
 - `GET /cases/{case_id}/jobs` — polling/reconciliation snapshot.
 - `GET /cases/{case_id}/events` — replayable SSE events (`Last-Event-ID`/`after`) with polling fallback.
 - `GET /cases/{case_id}/stats|graph|chat/suggestions` and `POST /cases/{case_id}/chat` — isolated case tools.
+- `POST /cases/{case_id}/reindex` — rebuild the case's Cognee dataset from confirmed evidence records and invalidate the derived graph cache.
 - `POST /cases/{case_id}/archive|restore` and `DELETE /cases/{case_id}` — lifecycle controls.
 - Case-scoped `timeline`, `contradictions`, `report`, `hunch`, `resolve`, `interrogation`, and `whatif` routes.
 
@@ -32,8 +33,10 @@ names are immutable UUID-derived values held by the server.
 Uploads stream through bounded temporary storage (25 MB/file, 50 files and 250 MB/batch by
 default). SHA-256 duplicates within a case are reported and skipped instead of reprocessed.
 
-`GET /cases/{case_id}/graph` returns analyzed entity and document nodes plus provenance and
-association edges, cached by graph revision. `timeline`, `chat`, `interrogation`, and `whatif`
+`GET /cases/{case_id}/graph` returns semantic case, person, location, vehicle, and evidence nodes.
+Files are provenance on nodes/edges rather than document nodes. Relationships are typed factual
+claims (`occurred_at`, `observed_near`, `examined`, etc.); mere co-occurrence never creates an
+edge. The result is cached by graph revision. `timeline`, `chat`, `interrogation`, and `whatif`
 consume the same case analysis. When Cognee recall fails, responses use `mode: "derived"` rather
 than returning demo content or failing silently.
 

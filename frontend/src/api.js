@@ -50,6 +50,7 @@ export const api = {
   health: () => get("/health"),
   stats: () => get("/stats"),
   graph: (caseId) => get(caseId ? `/cases/${caseId}/graph` : "/graph"),
+  reindexCase: (caseId) => post(`/cases/${caseId}/reindex`, {}),
   caseStats: (caseId) => get(`/cases/${caseId}/stats`),
   caseTimeline: (caseId) => get(`/cases/${caseId}/timeline`),
   caseInterrogation: (caseId, suspect_id) => post(`/cases/${caseId}/interrogation`, { suspect_id, focus_case: caseId }),

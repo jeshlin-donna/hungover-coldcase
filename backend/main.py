@@ -499,7 +499,8 @@ async def _durable_job_worker():
             elif job["kind"] == "ingest":
                 await asyncio.to_thread(case_store.job_progress, job["id"], "staging_cognee", 25)
                 if LIVE:
-                    await _with_job_heartbeat(job["id"], mem.remember(item["reviewed_text"], dataset=case["dataset_name"]))
+                    packet = case_analysis.knowledge_packet(case, item)
+                    await _with_job_heartbeat(job["id"], mem.remember(packet, dataset=case["dataset_name"]))
                 await asyncio.to_thread(case_store.job_progress, job["id"], "indexing_graph", 94)
                 await asyncio.to_thread(case_store.finish_ingestion, job)
         except asyncio.CancelledError:
@@ -688,7 +689,7 @@ async def case_delete_evidence(case_id: str, evidence_id: str):
                          if x["id"] != evidence_id and x["status"] == "ingested" and x["reviewed_text"]]
             if LIVE:
                 await mem.expunge(dataset=case["dataset_name"])
-                if remaining: await mem.remember_many([x["reviewed_text"] for x in remaining], dataset=case["dataset_name"])
+                if remaining: await mem.remember_many([case_analysis.knowledge_packet(case, x) for x in remaining], dataset=case["dataset_name"])
             deleted = await asyncio.to_thread(case_store.delete_evidence, case_id, evidence_id, True)
         else:
             deleted = await asyncio.to_thread(case_store.delete_evidence, case_id, evidence_id)
@@ -781,6 +782,28 @@ async def _case_llm_answer(analysis: dict, instruction: str, question: str) -> s
 async def case_graph(case_id: str):
     analysis, case = await _get_case_analysis(case_id)
     return {**analysis, "contradictions": [], "mode": "live" if LIVE else "derived"}
+
+
+@app.post("/cases/{case_id}/reindex")
+async def case_reindex(case_id: str):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    if not LIVE: raise HTTPException(503, "Cognee/LLM is unavailable; cannot rebuild the knowledge graph.")
+    jobs = await asyncio.to_thread(case_store.list_jobs, case_id)
+    if any(job["status"] in ("queued", "running") for job in jobs): raise HTTPException(409, "Wait for active jobs before rebuilding.")
+    evidence = [item for item in await asyncio.to_thread(case_store.list_evidence, case_id)
+                if item["status"] == "ingested" and item["reviewed_text"]]
+    try:
+        await mem.expunge(dataset=case["dataset_name"])
+        if evidence:
+            await mem.remember_many([case_analysis.knowledge_packet(case, item) for item in evidence],
+                                    dataset=case["dataset_name"], data_per_batch=1, chunk_size=1200)
+    except Exception as e: raise HTTPException(502, f"Cognee rebuild failed: {e}")
+    updated = await asyncio.to_thread(case_store.bump_graph_revision, case_id)
+    analysis, _ = await _get_case_analysis(case_id)
+    return {"ok": True, "graph_revision": updated["graph_revision"],
+            "evidence_count": len(evidence), "nodes": len(analysis["nodes"]), "edges": len(analysis["edges"])}
 
 
 @app.post("/cases/{case_id}/chat")

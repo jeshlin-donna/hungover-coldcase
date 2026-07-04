@@ -152,10 +152,11 @@ text by modality-specific extractors. This powers the "Import Case Files and Dat
 | Spreadsheet | `.xlsx .xls .csv` | `parse_spreadsheet()` | **pandas** loads the sheet, serializes columns + up to 500 rows into a structured text block. |
 | Everything else | `.txt .md` etc. | passthrough | Raw UTF-8 decode. |
 
-Each extractor returns a labeled text block (e.g. `"IMAGE EVIDENCE — {fname}\n\nForensic
-description:\n{description}"`), and `POST /ingest-file` (`main.py:686-754`) calls
-`memory_service.remember(extracted_text, dataset=DATASET)` on it — i.e. **every modality
-ultimately collapses to text before hitting Cognee**; Cognee itself never sees raw bytes.
+Each extractor returns reviewable text. For durable cases, an investigator confirms or edits it
+before ingestion. `case_analysis.knowledge_packet()` then wraps that content with immutable
+`CASE_ID`, `EVIDENCE_ID`, filename, modality, optional context, and a provenance rule before
+`memory_service.remember()` is called. Thus every modality becomes confirmed, attributable text
+before Cognee; Cognee never sees raw bytes or an unconfirmed model description.
 Each extractor degrades gracefully (returns an explanatory string) if its optional
 dependency (`whisper`, `opencv-python-headless`, `pymupdf`, `pandas`) isn't installed, or
 if `LIVE` is false.
@@ -342,7 +343,7 @@ never calls `fetch` directly.
 | Tab | Component | What it does | Backend calls |
 |---|---|---|---|
 | Case Chat | `ChatPanel.jsx` | Free-form Q&A over the case, graph-grounded | `POST /chat` |
-| Evidence Board | `GraphPanel.jsx` | Force-directed graph viz (`react-force-graph-2d`) of people/places/tools/evidence; color-coded by type; a **temporal slider** (Jan 2023–Dec 2025 by month) filters nodes/edges by date, with a client-side fallback filter if `/graph/temporal` is unreachable; supports animated node removal (e.g. after expunge) | `GET /graph`, `GET /graph/temporal`, contradiction check |
+| Evidence Board | `GraphPanel.jsx` | Force-directed semantic graph of verified people, places, vehicles, and evidence. Documents appear only as clickable provenance on typed edges; unsupported co-occurrence edges are excluded. Case graphs can be rebuilt from confirmed records with visible progress. The legacy demo graph retains its temporal filter. | `GET /cases/{id}/graph`, `POST /cases/{id}/reindex` |
 | Graph vs Vector | `ComparePanel.jsx` | Runs one query through both Cognee retrieval modes side by side to demonstrate multi-hop graph traversal beating plain vector search | `GET /recall/compare`, `POST /recall` |
 | Cognee APIs | `CogneePanel.jsx` | Interactive playground: one card per lifecycle call (remember/recall/improve/forget) showing the real Python snippet plus a "Run" button that executes it live against the case | `POST /hunch`, `POST /resolve`, `POST /expunge`, `POST /recall` (indirectly, via the "try" actions) |
 | Timeline | `TimelinePanel.jsx` | Chronological incident list, filterable/scrubbable by date | `GET /timeline` |

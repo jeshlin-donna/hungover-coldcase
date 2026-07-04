@@ -14,9 +14,12 @@ def _id(kind: str, label: str) -> str:
     return f"{kind}:{slug or hashlib.sha1(label.encode()).hexdigest()[:10]}"
 
 
-def _add_node(nodes, kind, label, **extra):
+def _add_node(nodes, kind, label, source=None, **extra):
     node_id = _id(kind, label)
-    nodes.setdefault(node_id, {"id": node_id, "label": label.strip(), "type": kind, **extra})
+    node = nodes.setdefault(node_id, {"id": node_id, "label": label.strip(), "type": kind, "sources": [], **extra})
+    if source and source not in node["sources"]: node["sources"].append(source)
+    for key, value in extra.items():
+        if value is not None and not node.get(key): node[key] = value
     return node_id
 
 
@@ -24,33 +27,47 @@ def build(case: dict, evidence_items: list[dict]) -> dict:
     nodes, edges, edge_keys, timeline = {}, [], set(), []
     case_node = _add_node(nodes, "case", case["title"], status=case["status"])
 
-    def edge(source, target, relation, source_doc=None):
+    def edge(source, target, relation, source_doc=None, confidence="verified"):
         key = (source, target, relation)
-        if source != target and key not in edge_keys:
-            edge_keys.add(key); edges.append({"source": source, "target": target, "relation": relation, "source_doc": source_doc})
+        if source == target: return
+        if key not in edge_keys:
+            edge_keys.add(key); edges.append({"source": source, "target": target, "relation": relation,
+                                               "sources": [source_doc] if source_doc else [], "confidence": confidence})
+        elif source_doc:
+            current = next(item for item in edges if (item["source"], item["target"], item["relation"]) == key)
+            if source_doc not in current["sources"]: current["sources"].append(source_doc)
 
     for item in evidence_items:
         if item["status"] != "ingested": continue
         text = item.get("reviewed_text") or ""
-        doc_id = f"document:{item['id']}"
-        nodes[doc_id] = {"id": doc_id, "label": item["original_filename"], "type": "document", "modality": item["modality"]}
-        edge(case_node, doc_id, "contains")
-        found = []
+        source = item["original_filename"]
+        found, people, locations, vehicles, facts = [], [], [], [], []
 
         # Explicit labeled people are high-confidence and source-grounded.
-        for match in re.finditer(r"(?im)^(?:primary\s+)?(?:suspect|examiner|victim|witness|name)\s*:\s*([^\n,]+)", text):
-            label = match.group(1).strip()
-            if 2 <= len(label) <= 80: found.append(_add_node(nodes, "person", label))
+        for match in re.finditer(r"(?im)^((?:primary\s+)?(?:suspect|examiner|victim|witness|name))\s*:\s*([^\n,]+)", text):
+            role, label = match.group(1).strip().lower(), match.group(2).strip()
+            if 2 <= len(label) <= 80:
+                person = _add_node(nodes, "person", label, source, role="suspect" if "suspect" in role else role)
+                found.append(person); people.append(person)
+                edge(person, case_node, "person_of_interest_in" if "suspect" in role else "involved_in", source,
+                     "reported" if "suspect" in role else "verified")
         for label in re.findall(r"\b(?:Daniel Marsh|Unknown Associate #\d+)\b", text, re.I):
-            found.append(_add_node(nodes, "person", label.title() if "unknown" not in label.lower() else label))
+            person = _add_node(nodes, "person", label.title() if "unknown" not in label.lower() else label, source)
+            found.append(person); people.append(person)
+            if "unknown associate" in nodes[person]["label"].lower():
+                edge(person, case_node, "involved_in", source, "reported")
 
         for match in re.finditer(r"(?im)^location\s*:\s*([^\n]+)", text):
-            found.append(_add_node(nodes, "location", match.group(1).strip()))
+            location = _add_node(nodes, "location", match.group(1).strip(), source)
+            found.append(location); locations.append(location); edge(case_node, location, "occurred_at", source)
         for label in re.findall(r"\b\d{1,5}\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\s+(?:Ave|Avenue|St|Street|Rd|Road|Lane|Ln|Dr|Drive|Ct|Court)\b", text):
-            found.append(_add_node(nodes, "location", label))
+            location = _add_node(nodes, "location", label, source)
+            found.append(location); locations.append(location); edge(case_node, location, "occurred_at", source)
 
         for label in re.findall(r"(?i)\b(?:dark\s+blue|black|white|red|silver|gray|grey)\s+(?:Honda|Toyota|Ford|Chevrolet|Nissan|BMW|Audi)?\s*[A-Z][A-Za-z0-9-]*(?:\s+Accord|\s+Civic|\s+sedan|\s+SUV)?(?:,?\s+partial\s+plate\s+[A-Z0-9-]+)?", text):
-            if len(label.split()) >= 2: found.append(_add_node(nodes, "vehicle", label.strip(" ,")))
+            if len(label.split()) >= 2:
+                vehicle = _add_node(nodes, "vehicle", label.strip(" ,"), source)
+                found.append(vehicle); vehicles.append(vehicle); edge(case_node, vehicle, "vehicle_reported", source, "reported")
 
         evidence_labels = []
         evidence_labels += re.findall(r"(?im)^Item\s+\d+\s*:\s*([^\n]+)", text)
@@ -58,7 +75,24 @@ def build(case: dict, evidence_items: list[dict]) -> dict:
             evidence_labels += [part.strip() for part in match.group(1).split(",")]
         evidence_labels += re.findall(r"(?i)\b8mm\s+left-nick\s+pry\s+blade\b", text)
         for label in evidence_labels:
-            if label: found.append(_add_node(nodes, "evidence", label))
+            # A vehicle description belongs on the vehicle node; duplicating it as
+            # an "evidence" node makes the board look connected without adding facts.
+            if label and not re.search(r"(?i)\b(?:Honda|Toyota|Ford|Chevrolet|Nissan|BMW|Audi|sedan|SUV|Accord|Civic)\b", label):
+                fact = _add_node(nodes, "evidence", label, source, evidence_type=item["modality"])
+                found.append(fact); facts.append(fact); edge(case_node, fact, "has_evidence", source)
+
+        # Only assert semantic entity-to-entity edges when the wording supports them.
+        if re.search(r"(?i)observed|saw|sighted|parked|near|left the area", text):
+            for vehicle in set(vehicles):
+                for location in set(locations): edge(vehicle, location, "observed_near", source, "reported")
+        if re.search(r"(?i)seen in (?:the )?vehicle|possible accomplice", text):
+            for person in set(people):
+                if "unknown associate" in nodes[person]["label"].lower():
+                    for vehicle in set(vehicles): edge(person, vehicle, "seen_in", source, "reported")
+        if re.search(r"(?i)tool-mark analysis|forensics report|forensic confirmation", text):
+            examiners = [p for p in people if nodes[p].get("role") == "examiner"]
+            for examiner in examiners:
+                for fact in set(facts): edge(examiner, fact, "examined", source)
 
         dates = re.findall(r"\b20\d{2}-\d{2}-\d{2}\b", text)
         # Structured CSV-like time/event rows.
@@ -74,13 +108,6 @@ def build(case: dict, evidence_items: list[dict]) -> dict:
             timeline.append({"date": dates[0], "time": None, "title": item["original_filename"],
                              "summary": text.splitlines()[0][:180], "evidence_id": item["id"], "source": item["original_filename"]})
 
-        unique = list(dict.fromkeys(found))
-        for entity_id in unique: edge(doc_id, entity_id, "mentions", item["original_filename"])
-        people = [x for x in unique if nodes[x]["type"] == "person"]
-        facts = [x for x in unique if nodes[x]["type"] in ("evidence", "vehicle", "location")]
-        for person in people:
-            for fact in facts: edge(person, fact, "associated_by_evidence", item["original_filename"])
-
     timeline.sort(key=lambda event: (event["date"], event.get("time") or ""))
     people = [node for node in nodes.values() if node["type"] == "person"]
     evidence = [node for node in nodes.values() if node["type"] == "evidence"]
@@ -90,6 +117,26 @@ def build(case: dict, evidence_items: list[dict]) -> dict:
     return {"case_id": case["id"], "graph_revision": case["graph_revision"], "nodes": list(nodes.values()),
             "edges": edges, "timeline": timeline, "summary": summary,
             "generated_at": datetime.now(timezone.utc).isoformat()}
+
+
+def knowledge_packet(case: dict, item: dict) -> str:
+    """Canonical payload sent to Cognee; confirmed content is separated from provenance."""
+    return f"""VERIFIED CASE EVIDENCE RECORD
+CASE_ID: {case['id']}
+CASE_TITLE: {case['title']}
+EVIDENCE_ID: {item['id']}
+SOURCE_FILE: {item['original_filename']}
+MODALITY: {item['modality']}
+REVIEW_STATUS: investigator_confirmed
+
+INVESTIGATOR_CONTEXT:
+{item.get('context') or '[none provided]'}
+
+CONFIRMED_CONTENT:
+{item.get('reviewed_text') or ''}
+
+PROVENANCE_RULE: Every extracted entity and relationship must remain attributable to EVIDENCE_ID and SOURCE_FILE. Do not infer guilt or convert co-occurrence into a factual relationship.
+"""
 
 
 def answer(analysis: dict, question: str) -> str:

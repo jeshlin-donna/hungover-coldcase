@@ -288,8 +288,10 @@ reversible; delete is visually and operationally separate.
 ### Phase 3 result — derived case intelligence
 
 Each graph revision now produces a persisted, source-grounded application analysis containing
-people, locations, vehicles, evidence entities, document provenance edges, person-to-evidence
-associations, and dated/timed events. Cognee graph recall enriches chat and tools when available;
+people, locations, vehicles, evidence entities, typed semantic relationships, edge-level source
+provenance, and dated/timed events. Documents are not displayed as knowledge entities, and
+co-occurrence alone does not produce an edge. Cognee receives canonical confirmed-evidence
+packets carrying stable case/evidence/source identifiers. Cognee graph recall enriches tools when available;
 the persisted analysis provides useful deterministic behavior when the LLM provider is offline.
 
 ### Phase 4 — lifecycle hardening

@@ -80,10 +80,18 @@ class CasePersistenceTests(unittest.TestCase):
         analysis = case_analysis.build(current, case_store.list_evidence(self.case["id"]))
         self.assertTrue(any(node["type"] == "person" for node in analysis["nodes"]))
         self.assertTrue(any(node["type"] == "evidence" for node in analysis["nodes"]))
+        self.assertFalse(any(node["type"] == "document" for node in analysis["nodes"]))
+        self.assertFalse(any(edge["relation"] in {"mentions", "contains", "associated_by_evidence"} for edge in analysis["edges"]))
+        self.assertTrue(all(edge.get("sources") for edge in analysis["edges"]))
         self.assertGreater(len(analysis["edges"]), 2)
         self.assertEqual(2, len(analysis["timeline"]))
         case_store.save_analysis(current["id"], current["graph_revision"], analysis)
         self.assertIsNotNone(case_store.get_analysis(current["id"], current["graph_revision"]))
+
+        packet = case_analysis.knowledge_packet(current, case_store.list_evidence(self.case["id"])[0])
+        self.assertIn(f"CASE_ID: {current['id']}", packet)
+        self.assertIn("REVIEW_STATUS: investigator_confirmed", packet)
+        self.assertIn("Do not infer guilt", packet)
 
 
 if __name__ == "__main__":

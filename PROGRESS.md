@@ -22,9 +22,12 @@ backup utility uses SQLite's consistent online backup API.
 Timeline, Interrogation Co-Pilot, and What-If are restored in the workspace using their
 case-scoped V2 APIs; they no longer render fixed Daniel Marsh demo content for new cases.
 
-Current Riverside View case regenerated at graph revision 11: 24 entity/document nodes,
-44 source-backed edges, and 6 timeline events. Case Chat, Interrogation, and What-If now fall
-back to this persisted analysis if Cognee/Ollama recall is unavailable.
+The Evidence Board now uses a provenance-first semantic graph: source documents are no longer
+display nodes, generic `mentions`/`contains`/co-occurrence links are prohibited, and each typed
+relationship exposes its supporting filenames and confidence. Confirmed evidence is wrapped in
+a canonical case/evidence/source record before Cognee extraction. A case-scoped rebuild action
+recreates Cognee from those records and invalidates derived analysis. Case Chat, Interrogation,
+and What-If fall back to the same persisted analysis if Cognee/Ollama is unavailable.
 
 Case navigation now opens persisted cases with evidence directly on the Evidence Board; only
 new or genuinely empty cases start in the upload flow.

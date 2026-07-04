@@ -360,6 +360,14 @@ def save_analysis(case_id: str, graph_revision: int, payload: dict) -> None:
                     (case_id, graph_revision, json.dumps(payload), now()))
 
 
+def bump_graph_revision(case_id: str) -> dict:
+    stamp = now()
+    with connect() as con:
+        con.execute("UPDATE cases SET graph_revision=graph_revision+1,updated_at=?,last_activity_at=? WHERE id=?", (stamp, stamp, case_id))
+        con.execute("DELETE FROM case_analyses WHERE case_id=?", (case_id,))
+    return get_case(case_id)
+
+
 def delete_evidence(case_id: str, evidence_id: str, allow_ingested: bool = False) -> bool:
     with connect() as con:
         row = con.execute("SELECT * FROM evidence_items WHERE id=? AND case_id=?", (evidence_id, case_id)).fetchone()
