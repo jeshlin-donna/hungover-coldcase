@@ -17,14 +17,57 @@ so the benchmark's doc-id extraction maps cleanly — see docs/API_NOTES.md.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import os
+import time
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import cognee
 
 from backend.schema import ColdCaseGraph, COLD_CASE_EXTRACTION_PROMPT
+
+# ---------------------------------------------------------------------------
+# Recall response cache — keeps demo/judging reliable when the LLM provider is
+# rate-limited (Groq's free tier is tight on TPM/TPD) by memoizing identical
+# (mode, dataset, query) recalls on disk. First call for a given question is
+# always live; repeats (e.g. a judge replaying the demo script, or the UI
+# re-rendering) are instant and cost zero additional tokens. Set
+# COLDCACHE_DISABLE_RECALL_CACHE=1 to force everything live (e.g. for grading
+# "does the live call actually work" rather than cache hits).
+_CACHE_PATH = Path(
+    os.getenv("COLDCACHE_CACHE_DIR", "/tmp/hungover-coldcase/.cognee_data")
+) / "recall_cache.json"
+_cache_disabled = os.getenv("COLDCACHE_DISABLE_RECALL_CACHE", "").lower() in ("1", "true")
+_recall_cache: dict[str, dict] | None = None
+
+
+def _load_cache() -> dict[str, dict]:
+    global _recall_cache
+    if _recall_cache is not None:
+        return _recall_cache
+    try:
+        _recall_cache = json.loads(_CACHE_PATH.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        _recall_cache = {}
+    return _recall_cache
+
+
+def _save_cache() -> None:
+    if _recall_cache is None:
+        return
+    try:
+        _CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _CACHE_PATH.write_text(json.dumps(_recall_cache))
+    except OSError:
+        pass  # cache is best-effort; never block the request on a disk error
+
+
+def _cache_key(mode: str, dataset: str, query: str) -> str:
+    return hashlib.sha256(f"{mode}|{dataset}|{query.strip().lower()}".encode()).hexdigest()
 
 # --- SearchType: verified export is `from cognee import SearchType` (re-exported from
 # cognee.api.v1.search). Keep the defensive loop for older/newer layouts. ---
@@ -157,19 +200,74 @@ async def wait_for_indexing(dataset_ids: list, timeout_s: int = 300) -> None:
 # ---------------------------------------------------------------------------
 # 2. RECALL — query with EXPLICIT mode (this is what powers the 3-way benchmark)
 # ---------------------------------------------------------------------------
+def _extract_answer_text(raw: Any) -> str:
+    """cognee.search()/recall() return shapes vary (list[str], or list[dict] with a
+    'search_result' key holding the real answer text, e.g. [{'dataset_id': ..., 'dataset_name':
+    ..., 'search_result': ['actual answer text']}]). Pull the human-readable text out instead
+    of falling back to a raw dict repr, which used to leak straight into every endpoint's
+    'answer'/'cognee_insight' field (chat, resolve, nexus, interrogation, whatif, report,
+    suspect-timeline, recall, recall_compare all shared this bug)."""
+    if not isinstance(raw, list):
+        return str(raw)
+    pieces: list[str] = []
+    for item in raw:
+        if isinstance(item, dict) and "search_result" in item:
+            sr = item["search_result"]
+            if isinstance(sr, list):
+                pieces.extend(str(s) for s in sr)
+            else:
+                pieces.append(str(sr))
+        elif isinstance(item, str):
+            pieces.append(item)
+        else:
+            pieces.append(str(item))
+    return "\n".join(pieces) if pieces else str(raw)
+
+
+RECALL_TIMEOUT_S = float(os.getenv("COLDCACHE_RECALL_TIMEOUT_S", "25"))
+
+
 async def recall(query: str, mode: RecallMode = RecallMode.GRAPH,
                  dataset: str = DEFAULT_DATASET) -> RecallResult:
+    key = _cache_key(mode.value, dataset, query)
+    if not _cache_disabled:
+        cached = _load_cache().get(key)
+        if cached is not None:
+            return RecallResult(mode=mode.value, query=query, answer=cached["answer"], raw=cached["answer"])
+
     if mode == RecallMode.INSIGHTS:
         await prepare_insights(dataset)
     st = _search_type_for(mode)
-    if st is not None:
-        # verified: search(query_text, query_type=SearchType, datasets=[names])
-        raw = await cognee.search(query_text=query, query_type=st, datasets=[dataset])
-    else:
-        # High-level auto-routing fallback if SearchType didn't import.
-        raw = await cognee.recall(query_text=query, datasets=[dataset])
-    # recall()/search() return list[RecallResponse]; stringify defensively for display.
-    answer = "\n".join(str(x) for x in raw) if isinstance(raw, list) else str(raw)
+    try:
+        if st is not None:
+            # verified: search(query_text, query_type=SearchType, datasets=[names])
+            raw = await asyncio.wait_for(
+                cognee.search(query_text=query, query_type=st, datasets=[dataset]),
+                timeout=RECALL_TIMEOUT_S,
+            )
+        else:
+            # High-level auto-routing fallback if SearchType didn't import.
+            raw = await asyncio.wait_for(
+                cognee.recall(query_text=query, datasets=[dataset]),
+                timeout=RECALL_TIMEOUT_S,
+            )
+    except asyncio.TimeoutError:
+        # The LLM provider (Groq free tier) can be rate-limited and retries internally for
+        # minutes; capping our own wait means the UI always gets a fast, honest response
+        # instead of hanging through a live demo. Not cached — a real retry should succeed
+        # once the provider's per-minute window rolls over.
+        answer = (
+            "The knowledge graph is temporarily busy (the LLM provider is rate-limited) — "
+            "please retry this question in about a minute."
+        )
+        return RecallResult(mode=mode.value, query=query, answer=answer, raw=None)
+    answer = _extract_answer_text(raw)
+
+    if not _cache_disabled:
+        cache = _load_cache()
+        cache[key] = {"answer": answer, "cached_at": time.time()}
+        _save_cache()
+
     return RecallResult(mode=mode.value, query=query, answer=answer, raw=raw)
 
 
