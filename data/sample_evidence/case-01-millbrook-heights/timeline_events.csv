@@ -1,4 +1,6 @@
-time,event,confidence
-23:45,Vehicle sighted near scene,0.8
-00:10,Entry forced,0.95
-00:35,Vehicle departs northbound,0.7
+time,event,confidence,source
+22:58,Card transaction near scene,0.75,financial_records.csv
+23:40,Vehicle sighted near scene,0.80,witness_statement
+00:12,Entry forced / incident occurs,0.95,incident_report
+00:35,Vehicle departs area,0.70,witness_statement
+00:52,911 call logged,0.90,dispatch_recording

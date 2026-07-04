@@ -1,6 +1,11 @@
-Evidence log — Oakdale Jewelry Store Heist
+EVIDENCE LOG — Case #OJ-2025-0231
+Oakdale Jewelry Store Heist
+Logged by: Officer P. Nakamura (Badge #5502)   Chain of custody initiated: 2025-03-06
 
-Item 1: Tool-mark cast
-Item 2: Fiber sample
-Item 3: Latent print lift
-Item 4: Vehicle paint transfer sample
+Item 1: Tool-mark cast (dental stone, 2x scale) — recovered from forced-entry point at 22 Commerce St, Oakdale.
+Item 2: Trace fiber sample (dark synthetic fabric) — recovered near point of entry, bagged and sealed.
+Item 3: Latent print lift (partial, 3 points) — recovered from adjacent surface, submitted to AFIS for comparison.
+Item 4: Vehicle paint transfer sample — collected from scrape mark, consistent with dark blue/navy factory paint.
+Item 5: Photographs (4) — scene overview, entry point detail, marker placement, and wide context shot.
+
+All items sealed in tamper-evident bags, logged into evidence room under case #OJ-2025-0231, and assigned to Det. Frank Iglesias (Badge #1187) for forensic lab submission.

@@ -1,5 +1,11 @@
-CASE: Harborview Insurance Fraud Ring
-Location: 14 Bayfront Plaza
-Suspect: Priya Anand
+INCIDENT REPORT — Case #HF-2025-0417
+Harborview Insurance Fraud Ring
+Date/Time of Report: 2025-04-02 14:20
+Reporting Officer: Officer D. Ferreira (Badge #2988)
+Location: 14 Bayfront Plaza, Harborview
 
-Initial responding officer report. Entry point forced using forged inspection reports. Getaway vehicle described as black Lexus RX, plate LMN-552. Scene photographed and processed.
+On 2025-04-02 at approximately 14:20, I responded to a report of a break-in at 14 Bayfront Plaza, Harborview. Upon arrival I observed signs of forced entry consistent with the use of forged vehicle-inspection and repair-shop reports. Tool-mark impressions were visible on the frame and were photographed and cast for lab comparison.
+
+The property owner/manager, Coastal Mutual Insurance (claims reviewer: Mark Delaney), was on scene and reported that several items were missing/disturbed. A vehicle matching the description 'black Lexus RX, plate LMN-552' was reported leaving the area shortly before the call came in. Canvassing of the neighborhood/area is ongoing.
+
+Evidence collected at the scene has been logged under case #HF-2025-0417 and forwarded to the forensics unit. This report will be updated as the investigation, led by Det. Sonia Pham (Badge #3345), progresses. No suspects have been formally charged at this time; Priya Anand remains a person of interest based on tool-mark and pattern similarities to related incidents in the area.
