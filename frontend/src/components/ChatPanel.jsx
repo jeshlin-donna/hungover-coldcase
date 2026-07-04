@@ -109,6 +109,10 @@ export default function ChatPanel() {
       <div className="chat-messages">
         {messages.map((msg, i) => (
           <div key={i} className={`chat-msg ${msg.role}`}>
+            <div className="chat-msg-role-row">
+              <span className="chat-msg-icon">{msg.role === "user" ? "🙋" : "🕵️"}</span>
+              <span className="chat-msg-role-label">{msg.role === "user" ? "You" : "ColdCache"}</span>
+            </div>
             <div className="chat-msg-text">{msg.text}</div>
             {msg.showSuggestions && (
               <div className="chat-suggestions">

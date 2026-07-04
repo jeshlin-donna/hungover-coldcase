@@ -56,9 +56,9 @@ function buildFallback(hypothesis) {
 }
 
 const IMPACT_STYLES = {
-  HIGH: { bg: "rgba(248,81,73,0.12)", color: "#f85149", border: "rgba(248,81,73,0.3)" },
-  MODERATE: { bg: "rgba(210,153,34,0.12)", color: "#d29922", border: "rgba(210,153,34,0.3)" },
-  LOW: { bg: "rgba(63,185,80,0.12)", color: "#3fb950", border: "rgba(63,185,80,0.3)" },
+  HIGH: { bg: "rgba(248,81,73,0.12)", color: "#f85149", border: "rgba(248,81,73,0.3)", icon: "🔴" },
+  MODERATE: { bg: "rgba(210,153,34,0.12)", color: "#d29922", border: "rgba(210,153,34,0.3)", icon: "🟡" },
+  LOW: { bg: "rgba(63,185,80,0.12)", color: "#3fb950", border: "rgba(63,185,80,0.3)", icon: "🟢" },
 };
 
 function ConfidenceBar({ label, before, after, color }) {
@@ -124,7 +124,7 @@ export default function WhatIfPanel() {
     }
   }
 
-  const impactStyle = result ? IMPACT_STYLES[result.impact] || IMPACT_STYLES.LOW : null;
+  const impactStyle = result ? IMPACT_STYLES[String(result.impact || "").toUpperCase()] || IMPACT_STYLES.LOW : null;
 
   return (
     <div className="panel whatif-panel">
@@ -198,7 +198,7 @@ export default function WhatIfPanel() {
                 borderColor: impactStyle.border,
               }}
             >
-              {result.impact} IMPACT
+              {impactStyle.icon} {result.impact} IMPACT
             </span>
             <span style={{ color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>
               "{result.hypothesis}"

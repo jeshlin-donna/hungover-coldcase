@@ -185,7 +185,7 @@ export default function TimelinePanel({ timeFilter }) {
                   <div className="incident-stem" />
                 </div>
 
-                <div className={`incident-card${inc.isArrest ? " arrest" : ""}`}>
+                <div className={`incident-card jur-accent-${inc.jurKey}${inc.isArrest ? " arrest" : ""}`}>
                   <div className="incident-date">{inc.date}</div>
                   <div className="incident-case">{inc.case}</div>
                   <span className={jurBadgeClass(inc.jurKey)}>{jurLabel(inc.jurKey)}</span>

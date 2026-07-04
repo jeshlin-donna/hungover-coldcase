@@ -68,6 +68,8 @@ const TYPE_COLORS = {
   FISHING: { bg: "rgba(227,179,65,0.12)", color: "#e3b341", border: "rgba(227,179,65,0.3)" },
 };
 
+const TYPE_ICONS = { OPEN: "💬", CONFRONTATION: "🎯", FISHING: "🎣" };
+
 export default function InterrogationPanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -114,7 +116,7 @@ export default function InterrogationPanel() {
 
       <div className="question-list">
         {d.questions.map((q) => {
-          const typeStyle = TYPE_COLORS[q.type] || TYPE_COLORS.OPEN;
+          const typeStyle = TYPE_COLORS[String(q.type || "").toUpperCase()] || TYPE_COLORS.OPEN;
           const isExpanded = expandedQ === q.number;
           return (
             <div
@@ -133,7 +135,7 @@ export default function InterrogationPanel() {
                       borderColor: typeStyle.border,
                     }}
                   >
-                    {q.type}
+                    {TYPE_ICONS[String(q.type || "").toUpperCase()] || ""} {q.type}
                   </span>
                   {q.evidence_held_back && (
                     <span className="evidence-held-chip">EVIDENCE HELD BACK</span>
