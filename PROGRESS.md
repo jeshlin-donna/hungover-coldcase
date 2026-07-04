@@ -3,11 +3,12 @@
 > **Last updated:** 2026-07-04 — Vision pipeline swapped to Ollama/Groq; all 20 endpoints verified; full 3-way benchmark pending.
 > Detailed plan: `EXECUTION_PLAN.md`
 
-## Next architecture milestone — planned
+## Case-scoped persistence milestone — in progress
 
-Case-scoped persistence and resumable ingestion are designed but not implemented. The design
-covers the blank case-home experience, case creation, durable evidence/reviews/jobs, reload-safe
-progress, per-case Cognee datasets, caching, recovery, deletion, and migration:
+The persistence foundation is implemented: application-owned SQLite/WAL storage, case CRUD,
+durable original files, evidence/revision/job records, restart recovery, background analysis and
+ingestion, immutable per-case Cognee dataset names, and graph revision tracking. The case-home UI,
+case-scoped tool migration, SSE, caching, and lifecycle hardening remain in progress. Design:
 [`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md).
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo

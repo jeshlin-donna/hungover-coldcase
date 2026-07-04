@@ -265,15 +265,15 @@ reversible; delete is visually and operationally separate.
 
 ### Phase 1 — persistence foundation
 
-1. Add SQLAlchemy/Alembic, SQLite WAL, models, migrations, repositories, and backup notes.
-2. Add storage adapter with atomic streamed writes and SHA-256.
-3. Implement case CRUD/home; remove automatic demo workspace entry.
+1. ✅ Add application-owned SQLite WAL, schema initialization, repositories, and recovery.
+2. ✅ Add atomic case-scoped file storage and SHA-256.
+3. 🔄 Implement case CRUD/home; backend CRUD is complete, frontend home remains.
 4. Seed Daniel Marsh only through explicit Load demo case action/script.
 
 ### Phase 2 — durable ingestion jobs
 
-1. Replace both in-memory collections with evidence/revision/job/event tables.
-2. Return durable IDs quickly; implement leases, heartbeat, recovery, retry, and cancel.
+1. 🔄 Durable evidence/revision/job tables are active for v2 routes; legacy collections remain until route migration.
+2. 🔄 Durable IDs, startup recovery, retry, and cancel are active; leases/heartbeat remain.
 3. Refactor extractors to emit page/frame/stage checkpoints.
 4. Queue confirmation/cognification and serialize writes per case.
 5. Add SSE/poll fallback and server-rehydrated import queue.

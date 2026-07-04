@@ -24,6 +24,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from backend import case_store
 
 IMAGE_TYPES = {
     "image/jpeg": "image/jpeg",
@@ -421,8 +422,175 @@ class ConfirmIngestReq(BaseModel):
 class BatchConfirmIngestReq(BaseModel):
     items: list[ConfirmIngestReq]
 
+class CaseCreateReq(BaseModel):
+    title: str
+    reference_number: str | None = None
+    description: str | None = None
+    jurisdiction: str | None = None
+    incident_date: str | None = None
+
+class CaseUpdateReq(BaseModel):
+    title: str | None = None
+    reference_number: str | None = None
+    description: str | None = None
+    jurisdiction: str | None = None
+    incident_date: str | None = None
+    status: str | None = None
+
+class EvidenceConfirmReq(BaseModel):
+    reviewed_text: str
+    context: str = ""
+
+
+_worker_task = None
+
+
+async def _durable_job_worker():
+    """Single durable worker; queued/running state survives browser and process restarts."""
+    while True:
+        job = await asyncio.to_thread(case_store.claim_job)
+        if not job:
+            await asyncio.sleep(0.75)
+            continue
+        try:
+            item = await asyncio.to_thread(case_store.get_evidence, job["evidence_id"])
+            case = await asyncio.to_thread(case_store.get_case, job["case_id"])
+            if not item or not case:
+                raise RuntimeError("Case or evidence record no longer exists")
+            if job["kind"] == "analyze":
+                await asyncio.to_thread(case_store.job_progress, job["id"], "reading_file", 10)
+                content = await asyncio.to_thread(case_store.storage_path(item).read_bytes)
+                await asyncio.to_thread(case_store.job_progress, job["id"], f"analyzing_{item['modality']}", 25)
+                output, _ = await _extract_upload(content, item["original_filename"])
+                if item["context"]:
+                    output = (f"USER-PROVIDED SUBMISSION CONTEXT\n{item['context']}\n\n"
+                              f"MODEL-GENERATED / EXTRACTED CONTENT — REVIEW BEFORE INGESTION\n{output}")
+                await asyncio.to_thread(case_store.job_progress, job["id"], "saving_review", 92)
+                await asyncio.to_thread(case_store.finish_analysis, job, output)
+            elif job["kind"] == "ingest":
+                await asyncio.to_thread(case_store.job_progress, job["id"], "staging_cognee", 25)
+                if LIVE:
+                    await mem.remember(item["reviewed_text"], dataset=case["dataset_name"])
+                await asyncio.to_thread(case_store.job_progress, job["id"], "indexing_graph", 94)
+                await asyncio.to_thread(case_store.finish_ingestion, job)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            await asyncio.to_thread(case_store.fail_job, job, str(e))
+
+
+@app.on_event("startup")
+async def start_durable_worker():
+    global _worker_task
+    await asyncio.to_thread(case_store.init_db)
+    _worker_task = asyncio.create_task(_durable_job_worker())
+
+
+@app.on_event("shutdown")
+async def stop_durable_worker():
+    if _worker_task:
+        _worker_task.cancel()
+        try:
+            await _worker_task
+        except asyncio.CancelledError:
+            pass
+
 
 # --- routes (match API_CONTRACT.md) ------------------------------------------
+@app.post("/cases", status_code=201)
+async def create_case(req: CaseCreateReq):
+    from fastapi import HTTPException
+    if not req.title.strip():
+        raise HTTPException(422, "Case title is required.")
+    return await asyncio.to_thread(case_store.create_case, req.model_dump())
+
+
+@app.get("/cases")
+async def cases_list():
+    return {"cases": await asyncio.to_thread(case_store.list_cases)}
+
+
+@app.get("/cases/{case_id}")
+async def case_detail(case_id: str):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    case["evidence"] = await asyncio.to_thread(case_store.list_evidence, case_id)
+    case["jobs"] = await asyncio.to_thread(case_store.list_jobs, case_id)
+    return case
+
+
+@app.patch("/cases/{case_id}")
+async def case_update(case_id: str, req: CaseUpdateReq):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.update_case, case_id, req.model_dump(exclude_none=True))
+    if not case: raise HTTPException(404, "Case not found.")
+    return case
+
+
+@app.post("/cases/{case_id}/evidence", status_code=202)
+async def case_upload_evidence(
+    case_id: str, files: list[UploadFile] = File(...), contexts: str = Form("[]")
+):
+    from fastapi import HTTPException
+    if not await asyncio.to_thread(case_store.get_case, case_id):
+        raise HTTPException(404, "Case not found.")
+    try: parsed = json.loads(contexts)
+    except json.JSONDecodeError: raise HTTPException(422, "contexts must be a JSON array.")
+    if not isinstance(parsed, list): raise HTTPException(422, "contexts must be a JSON array.")
+    parsed += [""] * (len(files) - len(parsed))
+    results = []
+    for index, upload in enumerate(files):
+        content = await upload.read()
+        item, job = await asyncio.to_thread(
+            case_store.save_evidence, case_id, upload.filename or f"file-{index+1}", content,
+            upload.content_type, _file_modality(upload.filename or ""), str(parsed[index] or "")
+        )
+        results.append({"evidence": item, "job": job})
+    return {"ok": True, "results": results}
+
+
+@app.get("/cases/{case_id}/evidence")
+async def case_evidence_list(case_id: str):
+    from fastapi import HTTPException
+    if not await asyncio.to_thread(case_store.get_case, case_id): raise HTTPException(404, "Case not found.")
+    return {"evidence": await asyncio.to_thread(case_store.list_evidence, case_id),
+            "jobs": await asyncio.to_thread(case_store.list_jobs, case_id)}
+
+
+@app.post("/cases/{case_id}/evidence/{evidence_id}/confirm", status_code=202)
+async def case_confirm_evidence(case_id: str, evidence_id: str, req: EvidenceConfirmReq):
+    from fastapi import HTTPException
+    if not req.reviewed_text.strip(): raise HTTPException(422, "Reviewed evidence cannot be empty.")
+    try:
+        job = await asyncio.to_thread(case_store.queue_ingestion, case_id, evidence_id,
+                                      req.reviewed_text.strip(), req.context.strip())
+    except KeyError: raise HTTPException(404, "Evidence not found in this case.")
+    return {"ok": True, "job": job}
+
+
+@app.post("/cases/{case_id}/evidence/{evidence_id}/retry", status_code=202)
+async def case_retry_evidence(case_id: str, evidence_id: str):
+    from fastapi import HTTPException
+    item = await asyncio.to_thread(case_store.get_evidence, evidence_id)
+    if not item or item["case_id"] != case_id: raise HTTPException(404, "Evidence not found.")
+    kind = "ingest" if item["status"] == "ingestion_failed" else "analyze"
+    try: job = await asyncio.to_thread(case_store.retry_evidence, case_id, evidence_id, kind)
+    except KeyError: raise HTTPException(404, "Evidence not found.")
+    return {"ok": True, "job": job}
+
+
+@app.post("/cases/{case_id}/evidence/{evidence_id}/cancel")
+async def case_cancel_evidence(case_id: str, evidence_id: str):
+    await asyncio.to_thread(case_store.cancel_job, case_id, evidence_id)
+    return {"ok": True}
+
+
+@app.get("/cases/{case_id}/jobs")
+async def case_jobs(case_id: str):
+    return {"jobs": await asyncio.to_thread(case_store.list_jobs, case_id)}
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "mode": "live" if LIVE else "degraded"}

@@ -4,6 +4,8 @@ __pycache__/
 .env
 data/raw/*
 !data/raw/.gitkeep
+data/cases/
+data/coldcache.db*
 .cognee_system/
 cognee_data/
 .cognee_data/
