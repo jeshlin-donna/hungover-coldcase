@@ -23,11 +23,15 @@ cases, ~21 files each (105 total), covering all supported formats:
   match each case's scene type (house exterior/entry, jewelry store, warehouse, office),
   with a forensic-style case/location caption composited on top — not illustrations,
   so vision models get genuine photographic content to describe.
-- **Video clips** are CCTV-style renders with timestamp/camera burn-in, film grain, and
-  moving person/vehicle silhouettes, exercising real keyframe + vision analysis.
+- **Video clips** use that case's own real evidence photo as the camera's background
+  plate (not a synthetic scene), with night-vision tint/scanlines/grain, an animated
+  walker silhouette, and timestamp/camera-ID burn-in composited on top — see `CREDITS.md`
+  for why the moving figure itself stays illustrated rather than sourced footage.
 - **Audio** is **real synthesized speech** (macOS `say` + `afconvert`, not sine tones) —
   a witness statement, a 911-style dispatch call, and a detective voice memo per case —
-  so Whisper/Groq transcription has actual spoken content to transcribe.
+  further processed with room reverb, telephone bandpass filtering, or tip-line-quality
+  hiss depending on how each recording would actually have been captured, so
+  Whisper/Groq transcription has authentic-sounding spoken content to transcribe.
 
 ## Cases
 
