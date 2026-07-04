@@ -97,7 +97,7 @@ def build(case: dict, evidence_items: list[dict]) -> dict:
         dates = re.findall(r"\b20\d{2}-\d{2}-\d{2}\b", text)
         # Structured CSV-like time/event rows.
         for tm, event, confidence in re.findall(r"(?m)^\s*(\d{2}:\d{2})\s+(.+?)\s+(0\.\d+|1\.0+)\s*$", text):
-            timeline.append({"date": dates[0] if dates else item["created_at"][:10], "time": tm,
+            timeline.append({"date": dates[0] if dates else case.get("incident_date"), "time": tm,
                              "title": event.strip(), "summary": f"Confidence {confidence}",
                              "evidence_id": item["id"], "source": item["original_filename"]})
         for date, location, amount, notes in re.findall(r"(?m)^\s*(20\d{2}-\d{2}-\d{2})\s+(.+?)\s+(\d+\.\d{2})\s+\d+\s+(.+)$", text):
@@ -108,10 +108,10 @@ def build(case: dict, evidence_items: list[dict]) -> dict:
             timeline.append({"date": dates[0], "time": None, "title": item["original_filename"],
                              "summary": text.splitlines()[0][:180], "evidence_id": item["id"], "source": item["original_filename"]})
 
-    timeline.sort(key=lambda event: (event["date"], event.get("time") or ""))
+    timeline.sort(key=lambda event: (event.get("date") or "9999-12-31", event.get("time") or ""))
     people = [node for node in nodes.values() if node["type"] == "person"]
     evidence = [node for node in nodes.values() if node["type"] == "evidence"]
-    summary = (f"{case['title']} contains {len(evidence_items)} ingested documents, "
+    summary = (f"{case['title']} contains {len(evidence_items)} verified source files, "
                f"{len(people)} identified people, {len(evidence)} evidence items, "
                f"and {len(timeline)} dated or timed events.")
     return {"case_id": case["id"], "graph_revision": case["graph_revision"], "nodes": list(nodes.values()),

@@ -85,6 +85,7 @@ class CasePersistenceTests(unittest.TestCase):
         self.assertTrue(all(edge.get("sources") for edge in analysis["edges"]))
         self.assertGreater(len(analysis["edges"]), 2)
         self.assertEqual(2, len(analysis["timeline"]))
+        self.assertTrue(all(event["date"] is None for event in analysis["timeline"]))
         case_store.save_analysis(current["id"], current["graph_revision"], analysis)
         self.assertIsNotNone(case_store.get_analysis(current["id"], current["graph_revision"]))
 
