@@ -20,6 +20,7 @@ async function post(path, body) {
 
 export const api = {
   health: () => get("/health"),
+  stats: () => get("/stats"),
   graph: () => get("/graph"),
   graphTemporal: (time) => get(`/graph/temporal${time ? `?time=${encodeURIComponent(time)}` : ""}`),
   timeline: () => get("/timeline"),
@@ -37,14 +38,42 @@ export const api = {
   ingestFile: (file) => {
     const fd = new FormData();
     fd.append("file", file);
-    return fetch(`${BASE}/ingest-file`, { method: "POST", body: fd }).then((r) => r.json());
+    return fetch(`${BASE}/ingest-file`, { method: "POST", body: fd }).then(async (r) => {
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || `Upload failed (${r.status})`);
+      return data;
+    });
   },
+  analyzeFile: (file, context = "") => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("context", context);
+    return fetch(`${BASE}/ingest-file/analyze`, { method: "POST", body: fd }).then(async (r) => {
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || `Analysis failed (${r.status})`);
+      return data;
+    });
+  },
+  analyzeFiles: (files, contexts) => {
+    const fd = new FormData();
+    files.forEach((file) => fd.append("files", file));
+    fd.append("contexts", JSON.stringify(contexts));
+    return fetch(`${BASE}/ingest-files/analyze`, { method: "POST", body: fd }).then(async (r) => {
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || `Batch analysis failed (${r.status})`);
+      return data;
+    });
+  },
+  confirmFile: (review_id, extracted_text, context) =>
+    post("/ingest-file/confirm", { review_id, extracted_text, context }),
+  confirmFiles: (items) => post("/ingest-files/confirm", { items }),
   transcribe: (blob, filename = "recording.webm") => {
     const fd = new FormData();
     fd.append("file", blob, filename);
     return fetch(`${BASE}/transcribe`, { method: "POST", body: fd }).then((r) => r.json());
   },
   chat: (message, history) => post("/chat", { message, history }),
+  chatSuggestions: () => get("/chat/suggestions"),
   report: () => get("/report"),
   suspectTimeline: (suspect = "daniel-marsh") => get(`/suspect-timeline?suspect=${encodeURIComponent(suspect)}`),
 };

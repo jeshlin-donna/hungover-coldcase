@@ -7,6 +7,11 @@ FastAPI → React UI**, then walks every app feature (tab) and what it calls und
 > Scope note: this describes the code as written in this repo. Where the app can run
 > without a live LLM key ("DEGRADED mode"), that fallback is called out explicitly.
 
+> Planned architecture: durable case workspaces, resumable ingestion jobs, per-case Cognee
+> datasets, and migration away from browser/process-memory state are specified in
+> [`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md). This is not implemented yet;
+> the current-state sections below remain authoritative until that migration lands.
+
 ---
 
 ## 1. High-level system map
@@ -121,7 +126,7 @@ large-corpus/background-ingest path but isn't used by default.)
 ## 4. Preprocessing by modality (`backend/main.py`)
 
 Before text ever reaches `memory_service.remember()`, non-text uploads are converted to
-text by modality-specific extractors. This is what powers the "Messy Desk" upload tab.
+text by modality-specific extractors. This powers the "Import Case Files and Data" tab.
 
 | Modality | Extensions | Extractor | Technique |
 |---|---|---|---|
@@ -330,7 +335,7 @@ never calls `fetch` directly.
 | Nexus Point | `NexusPanel.jsx` | Shortest-path explainer between two arbitrary graph nodes (e.g. suspect → case), shown as a hop-by-hop narrative | `POST /nexus` |
 | Interrogation | `InterrogationPanel.jsx` | Generates a tactical question set built from known contradictions/weak edges for a suspect | `POST /interrogation` |
 | What-If | `WhatIfPanel.jsx` | Sandbox to test a hypothesis (e.g. discount a witness) and see recalculated confidence scores without mutating real data | `POST /whatif` |
-| Messy Desk | `UploadPanel.jsx` | Drag-and-drop ingestion UI; detects modality from extension, shows a modality-specific "processing" label (e.g. "Transcribing audio…"), previews images, and on success triggers a graph refresh + toast | `POST /ingest-file` |
+| Import Case Files and Data | `UploadPanel.jsx` | Multi-file drag-and-drop queue; each non-text file supports optional investigator context and editable model output. Batch analysis permits partial success; confirmed files are cognified sequentially | `POST /ingest-files/analyze`, `POST /ingest-files/confirm` |
 | Suspect Timeline | `SuspectTimelinePanel.jsx` | Minute-by-minute reconstruction of one suspect's movements/events across all ingested evidence, each entry with a confidence score and source doc IDs | `GET /suspect-timeline` |
 
 ---

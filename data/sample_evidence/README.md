@@ -27,7 +27,7 @@ no real people, places, or events.
 
 ## Usage
 
-Upload any file through the **Messy Desk** upload panel in the frontend, or directly:
+Upload any file through **Import Case Files and Data** in the frontend, or directly:
 
 ```bash
 curl -X POST http://localhost:8000/ingest-file \

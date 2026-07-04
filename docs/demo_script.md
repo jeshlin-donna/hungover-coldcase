@@ -16,11 +16,11 @@
 
 ---
 
-## BEAT 1 (0:15–0:35) — Ingest (Messy Desk)
+## BEAT 1 (0:15–0:35) — Import Case Files and Data
 
 *(Switch to the Upload tab)*
 
-> *"An investigator drops a crime scene photo into the Messy Desk panel."*
+> *"An investigator drops a crime scene photo into Import Case Files and Data."*
 
 *(Drag a photo onto the drop zone — show the "Analyzing image…" state)*
 

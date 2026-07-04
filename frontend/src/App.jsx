@@ -11,7 +11,7 @@ import SuspectTimelinePanel from "./components/SuspectTimelinePanel.jsx";
 const MAIN_TABS = [
   {
     id: "upload",
-    label: "Messy Desk",
+    label: "Import Case Files and Data",
     icon: "📁",
     blurb: "Drag-and-drop ingestion for new case files (audio, photos, text) straight into the knowledge graph.",
     tryText: "Try: drop a file and watch it get parsed into graph nodes in real time.",
@@ -66,7 +66,7 @@ export default function App() {
   const [tab, setTab] = useState("upload");
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [mode, setMode] = useState(null);
-  const [stats, setStats] = useState({ nodes: 47, docs: 261, jurisdictions: 3, alibiBreak: true });
+  const [stats, setStats] = useState({ nodes: 0, docs: 0, jurisdictions: 0, alibiBreak: false });
   const [improving, setImproving] = useState(false);
   const [improved, setImproved] = useState(null);
   const [justImproved, setJustImproved] = useState(false);
@@ -94,6 +94,9 @@ export default function App() {
 
   useEffect(() => {
     api.health().then((h) => setMode(h.mode)).catch(() => setMode("offline"));
+    api.stats().then((s) => setStats({
+      nodes: s.nodes, docs: s.docs, jurisdictions: s.jurisdictions, alibiBreak: s.alibi_break,
+    })).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -120,8 +123,8 @@ export default function App() {
   async function handleImprove() {
     setImproving(true);
     try {
-      await api.resolve([]);
-      setImproved({ before: "0.42", after: "0.71", metric: "recall@3" });
+      const result = await api.resolve([]);
+      setImproved({ before: Number(result.before).toFixed(2), after: Number(result.after).toFixed(2), metric: result.metric });
       setJustImproved(true);
       // Re-fetch graph
       try {
@@ -132,7 +135,7 @@ export default function App() {
       }
       setTimeout(() => setJustImproved(false), 3000);
     } catch {
-      setImproved({ before: "0.42", after: "0.71", metric: "recall@3" });
+      showToast("Could not improve the case graph. Check the backend connection.");
     } finally {
       setImproving(false);
     }
@@ -153,6 +156,9 @@ export default function App() {
   }
 
   function handleGraphUpdated() {
+    api.stats().then((s) => setStats({
+      nodes: s.nodes, docs: s.docs, jurisdictions: s.jurisdictions, alibiBreak: s.alibi_break,
+    })).catch(() => {});
     api.graph().then((g) => {
       const prevCount = graphData?.nodes?.length || 0;
       const newCount = g?.nodes?.length || 0;
@@ -262,7 +268,7 @@ export default function App() {
           <div className="tab-window">
             <div className="workspace-window-header">
               <button className="back-to-desk" style={{ cursor: "default", opacity: 0.85 }}>
-                Messy Desk
+                Import Case Files and Data
               </button>
             </div>
 
@@ -279,7 +285,7 @@ export default function App() {
             <div className="tab-window">
               <div className="workspace-window-header">
                 <button className="back-to-desk" onClick={() => { setWorkspaceOpen(false); setTab("upload"); }}>
-                  ← Messy Desk
+                  ← Import Case Files and Data
                 </button>
               </div>
 

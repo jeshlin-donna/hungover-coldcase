@@ -3,6 +3,13 @@
 > **Last updated:** 2026-07-04 — Vision pipeline swapped to Ollama/Groq; all 20 endpoints verified; full 3-way benchmark pending.
 > Detailed plan: `EXECUTION_PLAN.md`
 
+## Next architecture milestone — planned
+
+Case-scoped persistence and resumable ingestion are designed but not implemented. The design
+covers the blank case-home experience, case creation, durable evidence/reviews/jobs, reload-safe
+progress, per-case Cognee datasets, caching, recovery, deletion, and migration:
+[`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md).
+
 Legend: ✅ done · 🔄 in progress · ⬜ todo
 
 ---
@@ -25,7 +32,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 | NexusPanel — entity path visualization, hops + strength | Jesh | |
 | InterrogationPanel — trap questions, weak edges, strategy callout | Jesh | |
 | WhatIfPanel — confidence bar charts, hypothesis sandbox | Jesh | |
-| UploadPanel — drag-drop ingestion (Messy Desk) | Jesh | |
+| UploadPanel — verified case-file import | Jesh | |
 | `docs/blog_post.md` — 1500-word blog with code + benchmark table | Jesh | |
 | `docs/social_posts.md` — Twitter, LinkedIn, Instagram | Jesh | |
 | `README.md` — story-first, quick start, 4-API usage, AI disclosure | Jesh | |
@@ -70,7 +77,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 ## 📋 All 8 modules — status
 | Module | Endpoint | Panel | Status |
 |---|---|---|---|
-| Messy Desk (drag-drop) | POST /ingest-file | UploadPanel | ✅ |
+| Import Case Files and Data | POST /ingest-files/analyze + /ingest-files/confirm | UploadPanel | ✅ multi-file + partial retry |
 | Evidence Board (graph) | GET /graph | GraphPanel | ✅ |
 | Alibi Collision Engine | GET /contradictions | GraphPanel (red edges) | ✅ |
 | Missing Hours | GET /missing-hours | MissingHoursPanel | ✅ |

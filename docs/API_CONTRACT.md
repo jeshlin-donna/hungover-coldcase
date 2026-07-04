@@ -6,6 +6,11 @@ shapes so swapping mock → real is a one-line base-URL change.
 
 Base URL: `http://localhost:8000`. All responses JSON. CORS open in dev.
 
+> **Planned v2 case-scoped contract:** the endpoints below are currently session/global APIs.
+> The durable replacement—`/cases`, case evidence, jobs, SSE progress, and migration rules—is in
+> [`CASE_PERSISTENCE_PLAN.md`](CASE_PERSISTENCE_PLAN.md). V2 resolves Cognee datasets from
+> `case_id`; clients will not submit arbitrary dataset names.
+
 ---
 
 ### `GET /graph`
@@ -75,10 +80,27 @@ stay) so the UI can animate the subgraph removal.
 ### `GET /benchmark`
 Serves `benchmark/results.json` for the in-app benchmark chart.
 
+### `POST /ingest-file/analyze`
+Accepts multipart fields `file` and optional `context`. This extracts
+or generates reviewable text but does not write to Cognee. The response includes `review_id`,
+`extracted_text`, and `requires_confirmation: true`.
+
+### `POST /ingest-files/analyze`
+Accepts repeated multipart `files` fields and a `contexts` JSON array with one optional context entry per file.
+Returns `{ "results": [...] }` in the same order, with independent success/error states. Media
+analysis runs with bounded concurrency so a large drop does not overload the local model.
+
+### `POST /ingest-file/confirm`
+Accepts JSON `{ "review_id": "...", "extracted_text": "edited, verified text", "context": "..." }`.
+Only this confirmation step calls `remember()` and adds the evidence node to the graph.
+
+### `POST /ingest-files/confirm`
+Accepts `{ "items": [{ "review_id", "extracted_text", "context" }] }`. Items are cognified
+sequentially to respect the embedded graph database's single-writer constraint. Failed items do
+not roll back successful siblings and remain available for correction/retry.
+
 ### `POST /ingest-file`
-Accepts multipart form data with one `file` field. In LIVE mode, the backend extracts text
-for the detected modality, calls `remember()`, and adds an evidence node to the session graph.
-In DEGRADED mode, it returns the same response shape without writing to Cognee.
+Compatibility endpoint for plain text files, which can be ingested directly.
 ```json
 {
   "ok": true,
@@ -91,3 +113,12 @@ In DEGRADED mode, it returns the same response shape without writing to Cognee.
   "graph_node_id": "evidence:upload-1"
 }
 ```
+
+### `GET /chat/suggestions`
+Returns three questions generated from the active case graph. The UI uses generic prompts only
+when no live case graph is available.
+
+### `POST /chat`
+Accepts `{ "message": "...", "history": [...] }`. In live mode, both the latest question and
+recent conversation context are passed to graph completion; conversation text is never treated
+as case evidence.

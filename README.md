@@ -10,6 +10,10 @@
 
 Built for the **WeMakeDevs × Cognee Hackathon** · *Best Use of Open Source (self-hosted Cognee)* track.
 
+> **Planned persistence milestone:** ColdCache will move to durable case workspaces with a blank
+> case home, resumable backend ingestion jobs, reload-safe progress, and one Cognee dataset per
+> case. See [`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md).
+
 ---
 
 ## Running the App
@@ -344,7 +348,7 @@ case, not a demo gimmick.
 
 | Module | What it does | Endpoint | Cognee API |
 |---|---|---|---|
-| **Messy Desk** | Drag-drop ingest any file — text, image, audio, video, PDF, spreadsheet | POST /ingest-file | `remember()` |
+| **Import Case Files and Data** | Drop multiple text, image, audio, video, PDF, and spreadsheet files; analyze and verify each before ingestion | POST `/ingest-files/analyze`, `/ingest-files/confirm` | `remember()` |
 | **Evidence Board** | Force-directed graph of the case web | GET /graph | `recall(GRAPH)` |
 | **Alibi Collision** | Red edges on contradicting facts | GET /contradictions | `recall(GRAPH)` |
 | **Missing Hours** | Timeline gaps with urgency + recommendations | GET /missing-hours | `recall(GRAPH)` |

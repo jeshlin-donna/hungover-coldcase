@@ -17,9 +17,11 @@ import base64
 import functools
 import json
 import re
+import secrets
+from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -311,6 +313,7 @@ BENCH = ROOT / "benchmark" / "results.json"
 HERO = ROOT / "data" / "hero_case"
 DATASET = "coldcases"
 UPLOADED_NODES: list[dict] = []
+PENDING_INGESTIONS: dict[str, dict] = {}
 
 # --- try to go LIVE; fall back to DEGRADED cleanly ---------------------------
 LIVE = False
@@ -410,11 +413,35 @@ class ChatReq(BaseModel):
     message: str
     history: list[dict] = []  # [{"role": "user"|"assistant", "text": "..."}]
 
+class ConfirmIngestReq(BaseModel):
+    review_id: str
+    extracted_text: str | None = None
+    context: str | None = None
+
+class BatchConfirmIngestReq(BaseModel):
+    items: list[ConfirmIngestReq]
+
 
 # --- routes (match API_CONTRACT.md) ------------------------------------------
 @app.get("/health")
 def health():
     return {"ok": True, "mode": "live" if LIVE else "degraded"}
+
+
+@app.get("/stats")
+def stats():
+    # Stats must stay cheap: do not invoke graph recall just to paint the header.
+    graph_payload = mock("graph.json")
+    graph_payload["nodes"].extend(UPLOADED_NODES)
+    nodes = graph_payload.get("nodes", [])
+    jurisdictions = {n["id"] for n in nodes if n.get("type") == "jurisdiction"}
+    return {
+        "nodes": len(nodes),
+        "docs": len(known_doc_ids()) + len(UPLOADED_NODES),
+        "jurisdictions": len(jurisdictions),
+        "alibi_break": bool(graph_payload.get("contradictions")),
+        "mode": "live" if LIVE else "degraded",
+    }
 
 
 @app.get("/graph")
@@ -830,9 +857,46 @@ async def chat(req: ChatReq):
             "sources": ["MH-0102-FOR", "RV-0788-WIT", "MARSH-ALIBI"],
             "mode": "degraded"
         }
-    res = await mem.recall(req.message, mode=mem.RecallMode.GRAPH, dataset=DATASET)
+    recent = req.history[-8:]
+    history = "\n".join(
+        f"{item.get('role', 'user')}: {item.get('text', '')}" for item in recent
+    )
+    query = req.message
+    if history:
+        query = (
+            "Answer the investigator's latest question using the case knowledge graph. "
+            "Use the conversation only to resolve references; do not treat it as evidence.\n\n"
+            f"Conversation:\n{history}\n\nLatest question: {req.message}"
+        )
+    res = await mem.recall(query, mode=mem.RecallMode.GRAPH, dataset=DATASET)
     sources = extract_ids(str(res.raw), known_doc_ids())[:5]
     return {"answer": res.answer, "sources": sources, "mode": "live"}
+
+
+@app.get("/chat/suggestions")
+async def chat_suggestions():
+    fallback = [
+        "What evidence connects incidents across jurisdictions?",
+        "Which claims are contradicted by verified records?",
+        "What important gap should an investigator pursue next?",
+    ]
+    if not LIVE:
+        return {"suggestions": fallback, "mode": "degraded"}
+    try:
+        res = await mem.recall(
+            "Based only on this case graph, propose exactly three concise, useful questions "
+            "an investigator should ask next. Return one question per line, no numbering.",
+            mode=mem.RecallMode.GRAPH,
+            dataset=DATASET,
+        )
+        suggestions = []
+        for line in res.answer.splitlines():
+            cleaned = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip()
+            if cleaned and cleaned.endswith("?"):
+                suggestions.append(cleaned)
+        return {"suggestions": suggestions[:3] or fallback, "mode": "live"}
+    except Exception as e:
+        return {"suggestions": fallback, "mode": "degraded", "error": str(e)}
 
 
 @app.get("/report")
@@ -895,81 +959,171 @@ async def transcribe_audio_endpoint(file: UploadFile = File(...)):
     return {"text": "Mock: voice input received. In live mode, Whisper transcribes your query.", "mode": "degraded"}
 
 
-@app.post("/ingest-file")
-async def ingest_file(file: UploadFile = File(...)):
-    content = await file.read()
-    fname = file.filename or "unknown"
+async def _extract_upload(content: bytes, fname: str) -> tuple[str, str | None]:
+    """Convert one upload to reviewable text without writing to Cognee."""
     modality = _file_modality(fname)
-    extracted_text = None
     description = None
-
+    extracted_text = ""
     if modality == "image":
-        media_type = _media_type_for(fname)
-        if LIVE:
-            try:
-                description = await describe_image(content, fname, media_type)
-                extracted_text = f"IMAGE EVIDENCE — {fname}\n\nForensic description:\n{description}"
-            except Exception as e:
-                description = f"[Vision analysis failed: {e}]"
-        else:
-            description = "Mock mode: image received. Live mode uses Claude vision to extract a forensic description."
-
+        description = await describe_image(content, fname, _media_type_for(fname))
+        extracted_text = f"IMAGE EVIDENCE — {fname}\n\nForensic description:\n{description}"
     elif modality == "audio":
-        if LIVE:
-            try:
-                transcript = await transcribe_audio(content, fname)
-                description = transcript
-                extracted_text = f"AUDIO TRANSCRIPT — {fname}\n\n{transcript}"
-            except Exception as e:
-                description = f"[Transcription failed: {e}]"
-        else:
-            description = "Mock mode: audio received. Live mode uses Whisper to transcribe and ingest the transcript."
-
+        description = await transcribe_audio(content, fname)
+        extracted_text = f"AUDIO TRANSCRIPT — {fname}\n\n{description}"
     elif modality == "video":
-        if LIVE:
-            try:
-                description = await extract_video_description(content, fname)
-                extracted_text = f"VIDEO EVIDENCE — {fname}\n\nFrame-by-frame forensic analysis:\n{description}"
-            except Exception as e:
-                description = f"[Video analysis failed: {e}]"
-        else:
-            description = "Mock mode: video received. Live mode extracts keyframes and describes each with Claude vision."
-
+        description = await extract_video_description(content, fname)
+        extracted_text = f"VIDEO EVIDENCE — {fname}\n\nFrame-by-frame forensic analysis:\n{description}"
     elif modality == "pdf":
-        if LIVE:
-            try:
-                description = await extract_pdf_content(content, fname)
-                extracted_text = f"PDF DOCUMENT — {fname}\n\n{description}"
-            except Exception as e:
-                description = f"[PDF extraction failed: {e}]"
-        else:
-            description = "Mock mode: PDF received. Live mode extracts text (or uses vision for scanned pages)."
-
+        description = await extract_pdf_content(content, fname)
+        extracted_text = f"PDF DOCUMENT — {fname}\n\n{description}"
     elif modality == "spreadsheet":
         description = await asyncio.to_thread(parse_spreadsheet, content, fname)
         extracted_text = description
-
     else:
         extracted_text = content.decode("utf-8", errors="ignore")
+    return extracted_text, description
 
-    if LIVE and extracted_text:
-        await mem.remember(extracted_text, dataset=DATASET)
 
+@app.post("/ingest-file/analyze")
+async def analyze_ingest_file(file: UploadFile = File(...), context: str = Form("")):
+    content = await file.read()
+    fname = file.filename or "unknown"
+    modality = _file_modality(fname)
+    try:
+        extracted_text, description = await _extract_upload(content, fname)
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(502, f"Evidence analysis failed: {e}")
+    if context.strip():
+        extracted_text = (
+            f"USER-PROVIDED SUBMISSION CONTEXT\n{context.strip()}\n\n"
+            f"MODEL-GENERATED / EXTRACTED CONTENT — REVIEW BEFORE INGESTION\n{extracted_text}"
+        )
+    review_id = secrets.token_urlsafe(18)
+    PENDING_INGESTIONS[review_id] = {
+        "filename": fname, "size_bytes": len(content), "modality": modality,
+        "extracted_text": extracted_text, "context": context.strip(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    return {
+        "ok": True, "review_id": review_id, "filename": fname,
+        "size_bytes": len(content), "type": modality, "description": description,
+        "extracted_text": extracted_text, "context": context.strip(),
+        "requires_confirmation": True, "mode": "live" if LIVE else "degraded",
+    }
+
+
+@app.post("/ingest-files/analyze")
+async def analyze_ingest_files(
+    files: list[UploadFile] = File(...),
+    contexts: str = Form("[]"),
+):
+    """Analyze a batch with per-file results; one bad file never aborts its siblings."""
+    from fastapi import HTTPException
+    try:
+        parsed_contexts = json.loads(contexts)
+    except json.JSONDecodeError as e:
+        raise HTTPException(422, f"contexts must be a JSON array: {e.msg}")
+    if not isinstance(parsed_contexts, list) or len(parsed_contexts) != len(files):
+        raise HTTPException(422, "contexts must contain one string for each file.")
+    semaphore = asyncio.Semaphore(3)
+
+    async def analyze_one(index: int, upload: UploadFile, supplied_context) -> dict:
+        fname = upload.filename or f"file-{index + 1}"
+        context = str(supplied_context or "").strip()
+        modality = _file_modality(fname)
+        try:
+            async with semaphore:
+                content = await upload.read()
+                extracted_text, description = await _extract_upload(content, fname)
+            if context:
+                extracted_text = (
+                    f"USER-PROVIDED SUBMISSION CONTEXT\n{context}\n\n"
+                    f"MODEL-GENERATED / EXTRACTED CONTENT — REVIEW BEFORE INGESTION\n{extracted_text}"
+                )
+            review_id = secrets.token_urlsafe(18)
+            PENDING_INGESTIONS[review_id] = {
+                "filename": fname, "size_bytes": len(content), "modality": modality,
+                "extracted_text": extracted_text, "context": context,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            return {"ok": True, "index": index, "review_id": review_id,
+                    "filename": fname, "size_bytes": len(content), "type": modality,
+                    "description": description, "extracted_text": extracted_text,
+                    "context": context, "requires_confirmation": True}
+        except Exception as e:
+            return {"ok": False, "index": index, "filename": fname,
+                    "error": f"Evidence analysis failed: {e}"}
+
+    results = await asyncio.gather(*(
+        analyze_one(i, upload, parsed_contexts[i]) for i, upload in enumerate(files)
+    ))
+    return {"ok": all(item["ok"] for item in results), "results": results,
+            "mode": "live" if LIVE else "degraded"}
+
+
+@app.post("/ingest-file/confirm")
+async def confirm_ingest_file(req: ConfirmIngestReq):
+    from fastapi import HTTPException
+    pending = PENDING_INGESTIONS.get(req.review_id)
+    if not pending:
+        raise HTTPException(404, "Review not found or already confirmed.")
+    reviewed_text = (req.extracted_text or pending["extracted_text"]).strip()
+    if not reviewed_text:
+        raise HTTPException(422, "Reviewed evidence text cannot be empty.")
+    if req.context and req.context.strip() and req.context.strip() not in reviewed_text:
+        reviewed_text = f"USER-VERIFIED CONTEXT\n{req.context.strip()}\n\n{reviewed_text}"
+    if LIVE:
+        await mem.remember(reviewed_text, dataset=DATASET)
     upload_id = f"evidence:upload-{len(UPLOADED_NODES) + 1}"
     UPLOADED_NODES.append({
         "id": upload_id,
-        "label": fname,
+        "label": pending["filename"],
         "type": "evidence",
-        "modality": modality,
+        "modality": pending["modality"],
     })
-
+    del PENDING_INGESTIONS[req.review_id]
     return {
         "ok": True,
-        "filename": fname,
-        "size_bytes": len(content),
+        "filename": pending["filename"],
+        "size_bytes": pending["size_bytes"],
         "dataset": DATASET,
         "mode": "live" if LIVE else "degraded",
-        "type": modality,
-        "description": description,
+        "type": pending["modality"],
         "graph_node_id": upload_id,
+        "verified": True,
     }
+
+
+@app.post("/ingest-files/confirm")
+async def confirm_ingest_files(req: BatchConfirmIngestReq):
+    """Confirm sequentially because Cognee's embedded graph writer is single-writer."""
+    results = []
+    for index, item in enumerate(req.items):
+        try:
+            result = await confirm_ingest_file(item)
+            results.append({"ok": True, "index": index, **result})
+        except Exception as e:
+            detail = getattr(e, "detail", str(e))
+            results.append({"ok": False, "index": index, "review_id": item.review_id,
+                            "error": detail})
+    return {"ok": all(item["ok"] for item in results), "results": results,
+            "mode": "live" if LIVE else "degraded"}
+
+
+@app.post("/ingest-file")
+async def ingest_file(file: UploadFile = File(...)):
+    """Compatibility route: text files still use analyze + immediate confirmation."""
+    content = await file.read()
+    fname = file.filename or "unknown"
+    if _file_modality(fname) != "text":
+        from fastapi import HTTPException
+        raise HTTPException(409, "Non-text evidence must use analyze and confirm.")
+    extracted_text, _ = await _extract_upload(content, fname)
+    if LIVE and extracted_text:
+        await mem.remember(extracted_text, dataset=DATASET)
+    upload_id = f"evidence:upload-{len(UPLOADED_NODES) + 1}"
+    UPLOADED_NODES.append({"id": upload_id, "label": fname, "type": "evidence", "modality": "text"})
+    return {"ok": True, "filename": fname, "size_bytes": len(content), "dataset": DATASET,
+            "mode": "live" if LIVE else "degraded", "type": "text", "graph_node_id": upload_id,
+            "verified": True}

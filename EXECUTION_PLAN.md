@@ -21,6 +21,18 @@ The judges are **Cognee's own engineers**. We win by being the one submission th
 4. **Builds all 8 proposal modules** — not just a chatbot, a full investigative co-pilot
 5. **Looks spectacular** — 8-panel UI, temporal slider, force graph, alibi break animation
 
+### Next architecture milestone — case-scoped persistence (PLANNED)
+
+- [ ] Add application-owned SQLite migrations for cases, evidence, revisions, jobs, events, and graph state
+- [ ] Open on a blank case home; create/select/archive cases and load demo data explicitly
+- [ ] Store raw and derived evidence behind a case-scoped storage adapter
+- [ ] Move analysis/ingestion into leased resumable jobs with retry, cancellation, and restart recovery
+- [ ] Rehydrate review/progress through REST + SSE after reload, with polling fallback
+- [ ] Assign every case an immutable Cognee dataset and scope every tool by `case_id`
+- [ ] Add graph revisions, cache invalidation, safe deletion, and cross-case isolation tests
+
+Detailed design: [`docs/CASE_PERSISTENCE_PLAN.md`](docs/CASE_PERSISTENCE_PLAN.md).
+
 ### Judging criteria map
 | Criterion | What earns it | Owner |
 |---|---|---|
@@ -137,7 +149,7 @@ data/raw/ (250 noise docs)          data/hero_case/ (11 docs)
 
 | Module | Endpoint | UI Panel | Cognee API used |
 |---|---|---|---|
-| Messy Desk (ingestion) | POST /ingest-file | UploadPanel | remember() |
+| Import Case Files and Data | POST /ingest-files/analyze + /ingest-files/confirm | UploadPanel | batch review, then remember() after verification |
 | Dynamic Evidence Board | GET /graph | GraphPanel | recall(GRAPH) |
 | Alibi Collision Engine | GET /contradictions | GraphPanel (red edges) | recall(GRAPH) |
 | Missing Hours | GET /missing-hours | MissingHoursPanel | recall(GRAPH) |

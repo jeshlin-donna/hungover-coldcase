@@ -9,12 +9,14 @@ Cognee backend exists. Sam's FastAPI later mirrors these exact routes.
 """
 import json
 import re
+import secrets
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 MOCK = Path(__file__).resolve().parents[1] / "frontend" / "mock"
 BENCH = Path(__file__).resolve().parents[1] / "benchmark" / "results.json"
+PENDING = {}
 
 
 def load(name):
@@ -71,13 +73,75 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(json.loads(BENCH.read_text()) if BENCH.exists()
                               else {"note": "run benchmark.py to populate"})
         if path == "/health":
-            return self._send({"ok": True})
+            return self._send({"ok": True, "mode": "degraded"})
+        if path == "/stats":
+            g = load("graph.json")
+            return self._send({"nodes": len(g["nodes"]), "docs": 11,
+                               "jurisdictions": len({n["id"] for n in g["nodes"] if n.get("type") == "jurisdiction"}),
+                               "alibi_break": bool(g.get("contradictions")), "mode": "degraded"})
+        if path == "/chat/suggestions":
+            return self._send({"suggestions": [
+                "What evidence connects incidents across jurisdictions?",
+                "Which claims are contradicted by verified records?",
+                "What important gap should an investigator pursue next?",
+            ], "mode": "degraded"})
         return self._send({"error": "not found", "path": path}, 404)
 
     def do_POST(self):
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(length) or b"{}")
+        raw = self.rfile.read(length)
+        if path == "/ingest-files/analyze":
+            text = raw.decode("utf-8", errors="ignore")
+            filenames = re.findall(r'filename="([^"]+)"', text)
+            results = []
+            for index, filename in enumerate(filenames):
+                review_id = secrets.token_urlsafe(12)
+                extracted = ("MODEL-GENERATED / EXTRACTED CONTENT — REVIEW BEFORE INGESTION\n"
+                             f"{filename}\n\nAnalysis preview unavailable in degraded mode. Add verified observations before confirming.")
+                PENDING[review_id] = {"filename": filename, "text": extracted}
+                results.append({"ok": True, "index": index, "review_id": review_id,
+                                "filename": filename, "type": "evidence",
+                                "extracted_text": extracted, "requires_confirmation": True})
+            return self._send({"ok": True, "results": results, "mode": "degraded"})
+        if path == "/ingest-file/analyze":
+            text = raw.decode("utf-8", errors="ignore")
+            filename = (re.search(r'filename="([^"]+)"', text) or [None, "evidence"])[1]
+            review_id = secrets.token_urlsafe(12)
+            extracted = f"MODEL-GENERATED / EXTRACTED CONTENT — REVIEW BEFORE INGESTION\n{filename}\n\nAnalysis preview unavailable in degraded mode. Add verified observations before confirming."
+            PENDING[review_id] = {"filename": filename, "text": extracted}
+            return self._send({"ok": True, "review_id": review_id, "filename": filename,
+                               "type": "evidence", "extracted_text": extracted,
+                               "requires_confirmation": True, "mode": "degraded"})
+        if path == "/ingest-file":
+            text = raw.decode("utf-8", errors="ignore")
+            filename = (re.search(r'filename="([^"]+)"', text) or [None, "note.txt"])[1]
+            return self._send({"ok": True, "filename": filename, "type": "text",
+                               "graph_node_id": "evidence:mock-text", "verified": True,
+                               "mode": "degraded"})
+        body = json.loads(raw or b"{}")
+        if path == "/ingest-files/confirm":
+            results = []
+            for index, item in enumerate(body.get("items", [])):
+                pending = PENDING.pop(item.get("review_id", ""), None)
+                if pending:
+                    results.append({"ok": True, "index": index, "filename": pending["filename"],
+                                    "type": "evidence", "graph_node_id": f"evidence:mock-{index + 1}",
+                                    "verified": True, "mode": "degraded"})
+                else:
+                    results.append({"ok": False, "index": index, "error": "Review not found."})
+            return self._send({"ok": all(item["ok"] for item in results),
+                               "results": results, "mode": "degraded"})
+        if path == "/ingest-file/confirm":
+            pending = PENDING.pop(body.get("review_id", ""), None)
+            if not pending:
+                return self._send({"detail": "Review not found or already confirmed."}, 404)
+            return self._send({"ok": True, "filename": pending["filename"], "type": "evidence",
+                               "graph_node_id": f"evidence:mock-{len(PENDING) + 1}",
+                               "verified": True, "mode": "degraded"})
+        if path == "/chat":
+            return self._send({"answer": "Case chat is in degraded mode. Start the live backend to query the configured LLM and Cognee graph.",
+                               "sources": [], "mode": "degraded"})
         if path == "/recall":
             cmp = load("recall_compare.json")["results"]
             mode = body.get("mode", "graph")
