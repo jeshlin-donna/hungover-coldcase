@@ -42,3 +42,19 @@ the `DOC_ID:` strings, switch extraction to use the response's source/metadata f
 Read directly from source via `gh api` (tree) + `curl raw.githubusercontent.com`:
 `api/v1/{add,cognify,search,recall/recall,remember/remember,improve/improve,forget/forget,
 datasets/datasets,prune/prune}.py` and `modules/search/types/SearchType.py`.
+
+## Multimodal ingestion — Vision model
+Image, video (keyframe), and scanned-PDF ingestion all route through `describe_image()` in
+`backend/main.py`. This calls the local **Ollama** vision endpoint — no cloud API key needed.
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `VISION_MODEL` | `llava:7b` | Ollama model with vision support |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
+
+To use a different vision model: `ollama pull <model>` then set `VISION_MODEL=<model>` in `.env`.
+Supported alternatives: `moondream`, `minicpm-v`, `llava:13b`, `bakllava`.
+
+The call goes to Ollama's `/api/chat` endpoint with the image base64-encoded in the `images` field.
+All blocking I/O runs in `asyncio.to_thread()` so the FastAPI event loop is never blocked.
+Timeout is 120 seconds (large images / first-load model warm-up can be slow).

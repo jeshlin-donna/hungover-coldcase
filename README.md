@@ -20,7 +20,7 @@ There are three ways to run ColdCache depending on what you want to do.
 
 ### Option A — Full App (backend + frontend, live Cognee)
 
-**Prerequisites:** Python 3.10+, Node 18+, an Anthropic or OpenAI API key.
+**Prerequisites:** Python 3.10+, Node 18+, [Ollama](https://ollama.com) running locally.
 
 **Step 1 — Install dependencies**
 ```bash
@@ -68,6 +68,32 @@ no local CPU/RAM cost, and much faster than local Ollama.
 Never commit your key — `.env` is gitignored. Share it with teammates
 directly (Slack/DM) or via a shared password manager, not in git, since
 this repo is intended to go public after the hackathon.
+
+*Option C — fully local Ollama (default — no API key needed):*
+
+Install [Ollama](https://ollama.com/download), then pull the models:
+```bash
+ollama pull gemma4:e4b           # graph extraction LLM (~9.6 GB)
+ollama pull nomic-embed-text     # local embeddings
+ollama pull llava:7b             # vision model for image/video/PDF ingestion (~4.1 GB)
+```
+Set in `.env`:
+```
+LLM_PROVIDER=ollama
+LLM_MODEL=gemma4:e4b
+LLM_ENDPOINT=http://localhost:11434/v1
+LLM_API_KEY=ollama_dummy_key     # must be non-empty; value doesn't matter
+LLM_INSTRUCTOR_MODE=json_mode
+LLM_MAX_COMPLETION_TOKENS=16384
+EMBEDDING_PROVIDER=ollama
+EMBEDDING_MODEL=nomic-embed-text:latest
+VISION_MODEL=llava:7b            # for image/video/scanned-PDF ingestion
+OLLAMA_BASE_URL=http://localhost:11434
+COGNEE_SKIP_CONNECTION_TEST=true
+```
+This is the **fully self-hosted, zero-cloud, zero-API-key** setup. Everything runs
+locally on your machine. Graph extraction will be slower (~30–90s per doc) than
+hosted providers, but it's 100% private and free.
 
 **Step 3 — Verify Cognee works**
 ```bash
@@ -242,7 +268,7 @@ entity relationships across documents. Graph traversal can. That's the thesis.
 | Criterion | How ColdCache Addresses It |
 |---|---|
 | **Best Use of Cognee** | All 4 lifecycle APIs (remember/recall/improve/forget) mapped to genuine investigative needs — not bolted on. Three search modes demonstrated live. benchmark proves graph beats vector on multi-hop. |
-| **Technical Excellence** | Multimodal ingestion pipeline (image/audio/video/PDF/spreadsheet). 3-way retrieval benchmark. 15 API endpoints. Defensive import patterns for Cognee version compatibility. |
+| **Technical Excellence** | Multimodal ingestion pipeline (image/audio/video/PDF/spreadsheet) using **local Ollama vision (llava:7b)** — zero cloud dependency. 3-way retrieval benchmark. 20 API endpoints. Defensive import patterns for Cognee version compatibility. |
 | **Creativity & Innovation** | Cross-jurisdiction cold case framing is unique in the field. Alibi break via TRIPLET_COMPLETION. Session memory for detective hunches. Legal record expungement as a real use case. |
 | **Potential Impact** | Real-world problem: siloed evidence across jurisdictions costs convictions and enables wrongful non-arrests. Multimodal ingestion handles actual investigative documents. Zero PII risk — fully self-hosted. |
 | **User Experience** | 10 investigative panels. Keyboard shortcuts (1–0). Voice input. Force-directed evidence graph. Dark intelligence-dashboard aesthetic. Degraded mode — always works. |

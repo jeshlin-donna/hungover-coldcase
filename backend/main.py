@@ -52,53 +52,54 @@ def _media_type_for(filename: str) -> str | None:
             ".png": "image/png", ".gif": "image/gif",
             ".webp": "image/webp"}.get(ext)
 
-_anthropic_client = None
-
-
-def _get_anthropic_client():
-    """Lazily construct and cache the Anthropic client (avoids reconnecting per-request)."""
-    global _anthropic_client
-    if _anthropic_client is None:
-        import os
-        import anthropic as ant
-
-        _anthropic_client = ant.Anthropic(api_key=os.getenv("LLM_API_KEY"))
-    return _anthropic_client
+_VISION_PROMPT = (
+    "You are analyzing evidence for a cold case investigation. "
+    "Image filename: {filename}\n\n"
+    "Describe this image in forensic detail. Note: any visible people "
+    "(physical description, clothing, distinguishing features), vehicles "
+    "(make, model, color, license plates), locations or addresses, objects "
+    "of interest, any visible text or timestamps, and anything potentially "
+    "relevant to a criminal investigation. Be specific and factual."
+)
 
 
 async def describe_image(content: bytes, filename: str, media_type: str) -> str:
-    """Send image to Claude vision and get a forensic description for Cognee ingestion."""
-    client = _get_anthropic_client()
+    """Describe an image using the local Ollama vision model (llava:7b by default).
+
+    Calls Ollama's /api/chat multimodal endpoint with a base64-encoded image.
+    Runs in a thread so the async event loop is never blocked.
+    No API key or cloud dependency — fully local and offline.
+    """
+    import os
+    import json
+    import urllib.request
+
     b64 = base64.standard_b64encode(content).decode()
+    vision_model = os.getenv("VISION_MODEL", "llava:7b")
+    ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    prompt = _VISION_PROMPT.format(filename=filename)
+
+    payload = json.dumps({
+        "model": vision_model,
+        "messages": [{
+            "role": "user",
+            "content": prompt,
+            "images": [b64],
+        }],
+        "stream": False,
+    }).encode()
 
     def _call():
-        # anthropic's SDK is synchronous/blocking; run it off the event loop thread
-        # so a slow vision call doesn't stall every other concurrent request
-        # (health checks, /recall, other uploads, ...).
-        return client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image", "source": {"type": "base64",
-                                                  "media_type": media_type,
-                                                  "data": b64}},
-                    {"type": "text", "text": (
-                        f"You are analyzing evidence for a cold case investigation. "
-                        f"Image filename: {filename}\n\n"
-                        "Describe this image in forensic detail. Note: any visible people "
-                        "(physical description, clothing, distinguishing features), vehicles "
-                        "(make, model, color, license plates), locations or addresses, objects "
-                        "of interest, any visible text or timestamps, and anything potentially "
-                        "relevant to a criminal investigation. Be specific and factual."
-                    )}
-                ]
-            }]
+        req = urllib.request.Request(
+            f"{ollama_base}/api/chat",
+            data=payload,
+            headers={"Content-Type": "application/json"},
         )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read())
+        return data["message"]["content"]
 
-    msg = await asyncio.to_thread(_call)
-    return msg.content[0].text
+    return await asyncio.to_thread(_call)
 
 
 _whisper_model = None
