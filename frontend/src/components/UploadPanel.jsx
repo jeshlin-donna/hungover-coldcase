@@ -46,7 +46,7 @@ const ingestionLabels = {
   text: "Ingesting…",
 };
 
-export default function UploadPanel({ onGraphUpdated }) {
+export default function UploadPanel({ onGraphUpdated, onNext }) {
   const [dragging, setDragging] = useState(false);
   const [pending, setPending] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -236,6 +236,22 @@ export default function UploadPanel({ onGraphUpdated }) {
         nodes and edges are extracted automatically — query immediately via Graph vs Vector or the
         Nexus panel.
       </div>
+
+      {ingestedFiles.length > 0 && onNext && (
+        <div className="upload-next-row">
+          <button className="next-btn" onClick={onNext}>
+            Continue to Evidence Board
+          </button>
+        </div>
+      )}
+
+      {onNext && (
+        <div className="upload-debug-row">
+          <button className="debug-test-btn" onClick={onNext}>
+            Next → (testmode)
+          </button>
+        </div>
+      )}
     </div>
   );
 }

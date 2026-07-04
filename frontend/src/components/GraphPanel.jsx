@@ -26,6 +26,18 @@ const TYPE_LABELS = {
   evidence: "Uploaded evidence",
 };
 
+const TYPE_ICONS = {
+  case: "🗂️",
+  tool: "🛠️",
+  vehicle: "🚗",
+  mo: "🧭",
+  suspect: "👤",
+  jurisdiction: "🏛️",
+  alibi: "🗣️",
+  receipt: "💳",
+  evidence: "📎",
+};
+
 // Animate node removal by filtering them out over a brief transition.
 function withoutNode(graph, nodeId) {
   return {
@@ -169,8 +181,8 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
   // the tight center cluster is visible in a mostly-empty canvas.
   useEffect(() => {
     if (!data.nodes.length) return;
-    fgRef.current?.d3Force("charge")?.strength(-220);
-    fgRef.current?.d3Force("link")?.distance(70);
+    fgRef.current?.d3Force("charge")?.strength(-320);
+    fgRef.current?.d3Force("link")?.distance(120);
     const id = setTimeout(() => {
       fgRef.current?.zoomToFit(400, 60);
     }, 300);
@@ -244,7 +256,10 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
         <ForceGraph2D
           ref={fgRef}
           graphData={data}
-          nodeLabel={(n) => `${n.label} (${n.type})`}
+          nodeLabel={(n) => {
+            const hoverText = n.type === "case" ? n.label || TYPE_LABELS[n.type] || "Case" : n.label || TYPE_LABELS[n.type] || n.type;
+            return `${TYPE_ICONS[n.type] || ""} ${hoverText} (${TYPE_LABELS[n.type] || n.type})`;
+          }}
           nodeColor={(n) => NODE_COLORS[n.type] || "#aaa"}
           nodeRelSize={7}
           d3VelocityDecay={0.35}
@@ -259,6 +274,43 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
           linkDirectionalParticleColor={(l) => (l._c ? "#f85149" : "#58a6ff")}
           linkDirectionalArrowLength={4}
           linkDirectionalArrowRelPos={1}
+          linkCanvasObjectMode={() => "after"}
+          linkCanvasObject={(link, ctx, globalScale) => {
+            const nodes = fgRef.current?.graphData?.()?.nodes || data.nodes;
+            const start = typeof link.source === "object" ? link.source : nodes.find((n) => n.id === link.source);
+            const end = typeof link.target === "object" ? link.target : nodes.find((n) => n.id === link.target);
+            if (!start || !end || start.x == null || end.x == null) return;
+            const label = link.relation || link.label || "";
+            if (!label) return;
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (!dist) return;
+            const midX = start.x + dx * 0.5;
+            const midY = start.y + dy * 0.5;
+            let angle = Math.atan2(dy, dx);
+            const offset = 10 / globalScale;
+            const textX = midX + Math.sin(angle) * offset;
+            const textY = midY - Math.cos(angle) * offset;
+            const fontSize = Math.max(6 / globalScale, 5);
+            if (angle > Math.PI / 2) angle -= Math.PI;
+            if (angle < -Math.PI / 2) angle += Math.PI;
+            ctx.save();
+            ctx.translate(textX, textY);
+            ctx.rotate(angle);
+            ctx.font = `${fontSize}px ui-sans-serif,system-ui,sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const textWidth = ctx.measureText(label).width;
+            ctx.fillStyle = "rgba(16,16,24,0.92)";
+            ctx.fillRect(-textWidth / 2 - 4, -fontSize / 2 - 3, textWidth + 8, fontSize + 6);
+            ctx.fillStyle = "rgba(248,248,248,0.98)";
+            ctx.fillText(label, 0, 0);
+            ctx.strokeStyle = "rgba(0,0,0,0.4)";
+            ctx.lineWidth = Math.max(1 / globalScale, 0.5);
+            ctx.strokeText(label, 0, 0);
+            ctx.restore();
+          }}
           backgroundColor="#090d13"
           onNodeClick={handleNodeClick}
           nodeCanvasObjectMode={() => "after"}
@@ -275,15 +327,25 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
               ctx.stroke();
               ctx.restore();
             }
-            const label = node.label || node.id;
-            const fontSize = Math.max(10 / globalScale, 2);
-            ctx.font = `${fontSize}px ui-sans-serif,system-ui,sans-serif`;
-            ctx.fillStyle = "rgba(230,237,243,0.85)";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "top";
-            const maxLen = 22;
-            const display = label.length > maxLen ? label.slice(0, maxLen) + "…" : label;
-            ctx.fillText(display, node.x, node.y + 9);
+            const icon = TYPE_ICONS[node.type] || "";
+            const label = node.type === "case" ? TYPE_LABELS[node.type] || "Case" : node.label || TYPE_LABELS[node.type] || node.type;
+            const display = label.length > 18 ? label.slice(0, 18) + "…" : label;
+            if (icon) {
+              const iconSize = Math.max(16 / globalScale, 10);
+              const labelSize = Math.max(iconSize * 0.45, 7);
+              ctx.save();
+              ctx.fillStyle = "rgba(230,237,243,0.95)";
+              ctx.textAlign = "center";
+
+              ctx.font = `${iconSize}px ui-sans-serif,system-ui,sans-serif`;
+              ctx.textBaseline = "middle";
+              ctx.fillText(icon, node.x, node.y - (labelSize / 2));
+
+              ctx.font = `${labelSize}px ui-sans-serif,system-ui,sans-serif`;
+              ctx.textBaseline = "top";
+              ctx.fillText(display, node.x, node.y + (iconSize / 1.8));
+              ctx.restore();
+            }
           }}
         />
 
@@ -296,6 +358,7 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded }) {
         {Object.entries(NODE_COLORS).map(([k, c]) => (
           <span key={k} className="legend-item">
             <i style={{ background: c }} />
+            <span style={{ marginRight: 6 }}>{TYPE_ICONS[k] || ""}</span>
             {TYPE_LABELS[k] || k}
           </span>
         ))}
@@ -321,7 +384,7 @@ function NodeDetail({ node, onClose }) {
           border: `1px solid ${color}55`,
         }}
       >
-        {TYPE_LABELS[node.type] || node.type}
+        {TYPE_ICONS[node.type] ? `${TYPE_ICONS[node.type]} ` : ""}{TYPE_LABELS[node.type] || node.type}
       </span>
       <h4>{node.label}</h4>
       <div className="nd-id">{node.id}</div>
