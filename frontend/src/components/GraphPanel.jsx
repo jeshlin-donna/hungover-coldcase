@@ -136,6 +136,35 @@ export default function GraphPanel({ justImproved, graphData, onGraphLoaded, cas
     }
   }, [graphData, caseId]);
 
+  // Live-update the board as evidence finishes ingesting elsewhere (e.g. the
+  // import tab). Each successful "ingest"/"reindex" job adds nodes to Cognee's
+  // graph, but this component only fetched once on mount — subscribe to the
+  // same job-event stream the import panel uses and refetch (debounced) on
+  // every completion so the graph fills in live instead of needing a
+  // tab-switch/reload to see new nodes.
+  useEffect(() => {
+    if (!caseId) return;
+    let debounceTimer = null;
+    const refetchGraph = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        api.graph(caseId).then((g) => {
+          setFullGraph(g);
+          setGraph((prev) => (sliderIdx < maxIdx ? prev : g));
+          onGraphLoaded?.(g);
+        }).catch(() => {});
+      }, 600);
+    };
+    const events = new EventSource(api.caseEventsUrl(caseId));
+    events.addEventListener("jobs", (evt) => {
+      try {
+        const payload = JSON.parse(evt.data);
+        if (payload.event_type === "job.succeeded") refetchGraph();
+      } catch { /* ignore malformed event */ }
+    });
+    return () => { clearTimeout(debounceTimer); events.close(); };
+  }, [caseId, onGraphLoaded, sliderIdx, maxIdx]);
+
   const waitForReindex = useCallback(async (jobId) => {
     for (;;) {
       const snapshot = await api.caseJobs(caseId);
