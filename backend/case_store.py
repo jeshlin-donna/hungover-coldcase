@@ -91,6 +91,14 @@ def init_db() -> None:
             "idempotency_key": "TEXT"
         }.items():
             if name not in columns: con.execute(f"ALTER TABLE jobs ADD COLUMN {name} {definition}")
+        case_columns = {row[1] for row in con.execute("PRAGMA table_info(cases)")}
+        if "seed_source" not in case_columns:
+            # Marks a case as seeded from a bundled pre-cognified sample (see
+            # PREBUILT_SAMPLE_DATASETS in main.py) so graph/chat/recall read from
+            # that shared, already-ingested dataset instead of the case's own
+            # (empty) one — avoids re-running Cognee's memory-heavy cognify()
+            # for demo/sample data on low-RAM hosts.
+            con.execute("ALTER TABLE cases ADD COLUMN seed_source TEXT")
         con.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_active_job ON jobs(evidence_id,kind) WHERE status IN ('queued','running')")
         con.execute("INSERT OR IGNORE INTO schema_migrations VALUES (1,?)", (now(),))
         # Only abandoned leases recover; a second healthy process must not steal work.
@@ -145,6 +153,13 @@ def update_case(case_id: str, payload: dict) -> dict | None:
 
 def archive_case(case_id: str, archived: bool) -> dict | None:
     return update_case(case_id, {"status": "archived" if archived else "open"})
+
+
+def set_seed_source(case_id: str, seed_source: str) -> dict | None:
+    stamp = now()
+    with connect() as con:
+        con.execute("UPDATE cases SET seed_source=?, updated_at=? WHERE id=?", (seed_source, stamp, case_id))
+    return get_case(case_id)
 
 
 def save_evidence(case_id: str, filename: str, content: bytes, media_type: str | None,

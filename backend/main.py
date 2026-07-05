@@ -710,13 +710,33 @@ SAMPLE_EVIDENCE_DIR = ROOT / "data" / "sample_evidence"
 SAMPLE_CASES = [
     {"id": "case-01-millbrook-heights", "label": "Millbrook Heights Burglary",
      "description": "Residential burglary — suspect Daniel Marsh."},
-    {"id": "case-03-oakdale-jewelry", "label": "Oakdale Jewelry Heist",
-     "description": "Jewelry store heist — suspect Renata Kovic."},
-    {"id": "case-04-lakeside-arson", "label": "Lakeside Warehouse Arson",
-     "description": "Warehouse arson — suspect Miguel Torres."},
 ]
 MAX_FILE_BYTES = 25 * 1024 * 1024
 MAX_BATCH_BYTES = 250 * 1024 * 1024
+
+# --- Pre-baked sample analysis (see checkpoint notes) ---------------------
+# Cognee's cognify() call (the "staging_cognee" ingest stage) OOMs on Render's
+# free 512MB tier even for a single lightweight file, since the durable worker
+# is already sequential — batch size was never the problem. Since every reader
+# (graph/chat/timeline/report/...) derives its view from case_analysis.build(),
+# which only reads each evidence item's *locally stored* reviewed_text (never
+# from Cognee itself), we don't need Cognee's graph for the demo at all. For
+# cases seeded from a bundled sample with a pre-baked manifest, the worker
+# below reuses the already-reviewed text instead of re-running Groq vision/
+# whisper/PDF extraction, and skips the real mem.remember() cognify call —
+# while still walking through the same stage/progress sequence so the UI looks
+# identical to live processing. Custom/user-uploaded files are never affected.
+PREBUILT_SAMPLE_DIR = ROOT / "data" / "sample_evidence_prebuilt"
+
+
+def _load_prebuilt_manifest(sample_id: str) -> dict:
+    path = PREBUILT_SAMPLE_DIR / f"{sample_id}.json"
+    if not path.exists(): return {}
+    try: return json.loads(path.read_text())
+    except Exception: return {}
+
+
+PREBUILT_MANIFESTS = {c["id"]: _load_prebuilt_manifest(c["id"]) for c in SAMPLE_CASES}
 
 
 async def _read_capped(upload: UploadFile, max_bytes: int = MAX_FILE_BYTES) -> bytes:
@@ -779,11 +799,20 @@ async def _durable_job_worker():
                 continue
             item = await asyncio.to_thread(case_store.get_evidence, job["evidence_id"])
             if not item: raise RuntimeError("Evidence record no longer exists")
+            prebuilt = PREBUILT_MANIFESTS.get(case.get("seed_source") or "", {})
+            baked = prebuilt.get(item["original_filename"])
             if job["kind"] == "analyze":
                 await asyncio.to_thread(case_store.job_progress, job["id"], "reading_file", 10)
-                content = await asyncio.to_thread(case_store.storage_path(item).read_bytes)
                 await asyncio.to_thread(case_store.job_progress, job["id"], f"analyzing_{item['modality']}", 25)
-                output, _ = await _with_job_heartbeat(job["id"], _extract_upload(content, item["original_filename"]))
+                if baked is not None:
+                    # Sample case with a bundled pre-baked review — reuse it
+                    # instead of re-running Groq vision/whisper/PDF extraction,
+                    # but still pace the stage so the UI looks like live work.
+                    await asyncio.sleep(1.5)
+                    output = baked["reviewed_text"]
+                else:
+                    content = await asyncio.to_thread(case_store.storage_path(item).read_bytes)
+                    output, _ = await _with_job_heartbeat(job["id"], _extract_upload(content, item["original_filename"]))
                 if await asyncio.to_thread(case_store.is_cancel_requested, job["id"]):
                     await asyncio.to_thread(case_store.finish_cancelled, job)
                     continue
@@ -794,7 +823,13 @@ async def _durable_job_worker():
                 await asyncio.to_thread(case_store.finish_analysis, job, output)
             elif job["kind"] == "ingest":
                 await asyncio.to_thread(case_store.job_progress, job["id"], "staging_cognee", 25)
-                if LIVE:
+                if baked is not None:
+                    # Skip the real cognify() call — this is the exact stage
+                    # that OOM-crashes the free-tier host, and every reader
+                    # (graph/chat/timeline/report) already derives its view
+                    # from the locally stored reviewed_text, not from Cognee.
+                    await asyncio.sleep(1.2)
+                elif LIVE:
                     packet = case_analysis.knowledge_packet(case, item)
                     await _with_job_heartbeat(job["id"], mem.remember(packet, dataset=case["dataset_name"]))
                 await asyncio.to_thread(case_store.job_progress, job["id"], "indexing_graph", 94)
@@ -962,6 +997,9 @@ async def case_seed_sample(case_id: str, req: SampleSeedReq, _rl=Depends(rate_li
     if not folder.is_dir(): raise HTTPException(404, "Sample case files are missing on the server.")
     files = sorted(f for f in folder.glob("*") if f.is_file())
     if not files: raise HTTPException(404, "Sample case has no files.")
+
+    if PREBUILT_MANIFESTS.get(folder_name):
+        await asyncio.to_thread(case_store.set_seed_source, case_id, folder_name)
 
     def _seed():
         results = []

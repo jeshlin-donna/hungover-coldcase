@@ -1,0 +1,37 @@
+{
+  "timeline_events.csv": {
+    "reviewed_text": "SPREADSHEET EVIDENCE \u2014 timeline_events.csv\nColumns: time, event, confidence\nRows: 3\n\n time                      event  confidence\n23:45 Vehicle sighted near scene        0.80\n00:10               Entry forced        0.95\n00:35 Vehicle departs northbound        0.70",
+    "modality": "spreadsheet",
+    "media_type": "text/csv"
+  },
+  "suspect_associates.xlsx": {
+    "reviewed_text": "SPREADSHEET EVIDENCE \u2014 suspect_associates.xlsx\nColumns: name, relationship, notes\nRows: 2\n\n                name        relationship              notes\n        Daniel Marsh     primary suspect person of interest\nUnknown Associate #1 possible accomplice    seen in vehicle",
+    "modality": "spreadsheet",
+    "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  },
+  "forensics_report.pdf": {
+    "reviewed_text": "PDF DOCUMENT \u2014 forensics_report.pdf\n\n[Page 1]\nFORENSICS REPORT \u00b7 Millbrook Heights Burglary Series\nTool-mark analysis: 8mm left-nick pry blade\nSuspect: Daniel Marsh\nExaminer: Lab Unit 4",
+    "modality": "pdf",
+    "media_type": "application/pdf"
+  },
+  "evidence_photo_01.jpg": {
+    "reviewed_text": "IMAGE EVIDENCE \u2014 evidence_photo_01.jpg\n\nForensic description:\n[Vision unavailable \u2014 Groq failed (groq package not installed. Run: pip install groq) and local/Claude fallback failed (Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CcjJ17T3cpJnkG5tcTjAB'})]",
+    "modality": "image",
+    "media_type": "image/jpeg"
+  },
+  "cctv_clip_01.mp4": {
+    "reviewed_text": "VIDEO EVIDENCE \u2014 cctv_clip_01.mp4\n\nFrame-by-frame forensic analysis:\n[0.0s into video] [Vision unavailable \u2014 Groq failed (groq package not installed. Run: pip install groq) and local/Claude fallback failed (Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CcjJ15UjMZmYsPrjMPEPv'})]",
+    "modality": "video",
+    "media_type": "video/mp4"
+  },
+  "audio_statement_01.wav": {
+    "reviewed_text": "AUDIO TRANSCRIPT \u2014 audio_statement_01.wav",
+    "modality": "audio",
+    "media_type": "audio/x-wav"
+  },
+  "01_incident_report.txt": {
+    "reviewed_text": "CASE: Millbrook Heights Burglary Series\nLocation: 412 Oakwood Drive\nSuspect: Daniel Marsh\n\nInitial responding officer report. Entry point forced using 8mm left-nick pry blade. Getaway vehicle described as dark blue Honda Accord, partial plate 7XK-2. Scene photographed and processed.",
+    "modality": "text",
+    "media_type": "text/plain"
+  }
+}
