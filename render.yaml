@@ -1,20 +1,19 @@
-runtime: python-3.11.9
 services:
   - type: web
     name: coldcache-backend
     runtime: python
-    # Persistent disks require a paid Render service. Use OCI Always Free for
-    # the no-cost durable deployment documented in DEPLOYMENT.md.
-    plan: starter
+    # Free plan is stateless — Render only attaches persistent disks to paid
+    # plans, so there's no disk block here. Case data (SQLite + files under
+    # COLDCACHE_DATA_DIR) lives on the container's local ephemeral disk and
+    # resets whenever the free instance restarts or spins down from
+    # inactivity. Fine for a demo; add a `disk:` block back and switch plan
+    # to "starter" if you need durability across restarts.
+    plan: free
     branch: main
     rootDir: .
     buildCommand: pip install -r requirements.production.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /ready
-    disk:
-      name: coldcache-data
-      mountPath: /opt/render/project/cognee_data
-      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
@@ -42,7 +41,9 @@ services:
         value: sentence-transformers/all-MiniLM-L6-v2
       - key: EMBEDDING_DIMENSIONS
         value: "384"
-      # --- Persistent storage on Render's disk (survives restarts, unlike serverless) ---
+      # --- App/Cognee data directories: on the free plan these live on ephemeral
+      # local disk (reset on restart/sleep); with a paid plan + disk block
+      # mounted at /opt/render/project/cognee_data, they'd persist instead. ---
       - key: DATA_ROOT_DIRECTORY
         value: /opt/render/project/cognee_data/data_storage
       - key: SYSTEM_ROOT_DIRECTORY
