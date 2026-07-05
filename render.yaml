@@ -3,12 +3,14 @@ services:
   - type: web
     name: coldcache-backend
     runtime: python
-    plan: free
+    # Persistent disks require a paid Render service. Use OCI Always Free for
+    # the no-cost durable deployment documented in DEPLOYMENT.md.
+    plan: starter
     branch: main
     rootDir: .
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.production.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /health
+    healthCheckPath: /ready
     disk:
       name: coldcache-data
       mountPath: /opt/render/project/cognee_data
@@ -47,10 +49,17 @@ services:
         value: /opt/render/project/cognee_data/cognee_system
       - key: CACHE_ROOT_DIRECTORY
         value: /opt/render/project/cognee_data/cognee_cache
+      - key: COLDCACHE_DATA_DIR
+        value: /opt/render/project/cognee_data/app
+      - key: CORS_ORIGINS
+        sync: false
+      - key: TRUSTED_HOSTS
+        sync: false
+      - key: REQUIRE_LIVE_LLM
+        value: "true"
       # --- Public-deployment hardening (see .env.example for details) ---
-      - key: ALLOWED_ORIGINS
-        sync: false          # set to your Vercel frontend URL, e.g. https://your-app.vercel.app
       - key: ADMIN_TOKEN
         sync: false          # set to a long random string; protects GET /cases and POST /expunge
       - key: RATE_LIMIT_MAX_PER_MINUTE
         value: "20"
+

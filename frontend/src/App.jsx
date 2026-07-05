@@ -24,7 +24,7 @@ const CHAT_TAB = {
   label: "Case Chat",
   icon: "💬",
   blurb: "Ask plain-English questions about the case; answers are sourced live from the knowledge graph.",
-  tryText: "Try: \"Who appears across both Millbrook and Riverside cases?\"",
+  tryText: "Try: ask which verified facts connect a person, location, and evidence item in this case.",
 };
 
 const SUB_TABS = [
@@ -33,7 +33,7 @@ const SUB_TABS = [
     label: "Evidence Board",
     icon: "🕸️",
     blurb: "The interactive case graph — people, places, tools, and evidence as connected nodes.",
-    tryText: "Try: drag the temporal slider, then click \"Run alibi check\" to see the contradiction light up.",
+    tryText: "Try: select a node to inspect its source-backed connections.",
   },
   {
     id: "timeline",
@@ -47,7 +47,7 @@ const SUB_TABS = [
     label: "Interrogation",
     icon: "🎯",
     blurb: "Generates tactical questions for a suspect, built from contradictions between their statements and hard evidence.",
-    tryText: "Try: generate a question that traps the suspect's alibi claim.",
+    tryText: "Try: generate neutral questions that test a named person's account against verified facts.",
   },
   {
     id: "whatif",

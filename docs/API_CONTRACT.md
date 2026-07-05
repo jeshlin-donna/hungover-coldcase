@@ -48,6 +48,14 @@ Other case-scoped endpoints documented below are implemented in the backend but 
 
 `fallback` is the new post-merge health signal for Groq→local failover.
 
+#### `GET /ready`
+
+Verifies that the configured persistent directory is writable and SQLite is reachable. When `REQUIRE_LIVE_LLM=true`, it returns `503` unless an LLM provider is configured.
+
+```json
+{ "ok": true, "storage": "writable", "database": "reachable", "mode": "live" }
+```
+
 ---
 
 ## Cases
