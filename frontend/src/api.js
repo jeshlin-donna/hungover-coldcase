@@ -1,6 +1,6 @@
 // Single place that talks to the backend.
 // The backend auto-detects live vs degraded and serves mock-compatible data on port 8000.
-const BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+const BASE = (import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : window.location.origin)).replace(/\/$/, "");
 
 async function get(path) {
   const r = await fetch(`${BASE}${path}`);

@@ -1,0 +1,12 @@
+cognee==1.2.2
+lancedb==0.26.0
+groq
+fastembed
+fastapi
+uvicorn[standard]
+python-dotenv
+python-multipart
+opencv-python-headless
+pymupdf
+pandas
+openpyxl

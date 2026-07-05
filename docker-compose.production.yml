@@ -1,0 +1,50 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: ${COLDCACHE_ENV_FILE:-.env.production}
+    environment:
+      COLDCACHE_DATA_DIR: /var/lib/coldcache/app
+      DATA_ROOT_DIRECTORY: /var/lib/coldcache/cognee/data
+      SYSTEM_ROOT_DIRECTORY: /var/lib/coldcache/cognee/system
+      CACHE_ROOT_DIRECTORY: /var/lib/coldcache/cognee/cache
+      CORS_ORIGINS: https://${DOMAIN}
+      TRUSTED_HOSTS: ${DOMAIN}
+      REQUIRE_LIVE_LLM: "true"
+    volumes:
+      - coldcache_data:/var/lib/coldcache
+
+  frontend:
+    build:
+      context: frontend
+      args:
+        VITE_API_BASE: /api
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER}
+      BASIC_AUTH_HASH: ${BASIC_AUTH_HASH}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+
+volumes:
+  coldcache_data:
+  caddy_data:
+  caddy_config:

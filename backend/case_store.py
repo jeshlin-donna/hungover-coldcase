@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import sqlite3
 import uuid
@@ -10,8 +11,9 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = ROOT / "data" / "coldcache.db"
-CASE_FILES = ROOT / "data" / "cases"
+DATA_DIR = Path(os.getenv("COLDCACHE_DATA_DIR", str(ROOT / "data"))).expanduser().resolve()
+DB_PATH = DATA_DIR / "coldcache.db"
+CASE_FILES = DATA_DIR / "cases"
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -148,7 +150,7 @@ def archive_case(case_id: str, archived: bool) -> dict | None:
 def save_evidence(case_id: str, filename: str, content: bytes, media_type: str | None,
                   modality: str, context: str = "") -> tuple[dict, dict]:
     digest = hashlib.sha256(content).hexdigest()
-    temp_dir = ROOT / "data" / "upload_tmp"; temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_dir = DATA_DIR / "upload_tmp"; temp_dir.mkdir(parents=True, exist_ok=True)
     temp = temp_dir / str(uuid.uuid4()); temp.write_bytes(content)
     return save_evidence_file(case_id, filename, temp, len(content), digest, media_type, modality, context)
 
@@ -164,7 +166,7 @@ def save_evidence_file(case_id: str, filename: str, temp: Path, size_bytes: int,
         return item, None
     suffix = Path(filename).suffix.lower()[:12]
     relative = Path("cases") / case_id / "originals" / f"{evidence_id}{suffix}"
-    target = ROOT / "data" / relative
+    target = DATA_DIR / relative
     target.parent.mkdir(parents=True, exist_ok=True)
     target_temp = target.with_suffix(target.suffix + ".tmp")
     temp.replace(target_temp); target_temp.replace(target)
@@ -439,9 +441,9 @@ def delete_case_records(case_id: str) -> bool:
         found = con.execute("SELECT 1 FROM cases WHERE id=?", (case_id,)).fetchone()
         if not found: return False
         con.execute("DELETE FROM cases WHERE id=?", (case_id,))
-    shutil.rmtree(ROOT / "data" / "cases" / case_id, ignore_errors=True)
+    shutil.rmtree(CASE_FILES / case_id, ignore_errors=True)
     return True
 
 
 def storage_path(item: dict) -> Path:
-    return ROOT / "data" / item["storage_key"]
+    return DATA_DIR / item["storage_key"]

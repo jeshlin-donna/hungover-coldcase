@@ -6,6 +6,8 @@
 
 Built for the **WeMakeDevs × Cognee Hackathon** · *Best Use of Open Source (self-hosted Cognee)* track.
 
+**Hosting:** the durable free deployment is Docker Compose on an OCI Always Free VM; Cloudflare Pages or Vercel can optionally host only the static frontend. See [DEPLOYMENT.md](DEPLOYMENT.md). Do not use an ephemeral free backend for real cases.
+
 > **Current app shape:** the primary UI is now a **multi-case workspace**. It opens on a blank case home, stores case metadata/evidence/jobs in SQLite, assigns each case its own Cognee dataset, and rehydrates progress after reloads or backend restarts.
 
 > **Automatic fallback:** when Groq is rate-limited or returns a degraded Cognee reply, ColdCache can automatically retry against **local Ollama** instead of hanging or hard-failing. `GET /health` exposes the current fallback state.
@@ -116,8 +118,8 @@ Open **http://localhost:5173**.
 ### Persistent case storage
 
 ColdCache's current UI does **not** require preloading the old hero corpus to function. Case data lives in:
-- `data/coldcache.db` — app-owned SQLite database
-- `data/cases/` — stored originals per case
+- `$COLDCACHE_DATA_DIR/coldcache.db` — app-owned SQLite database (`data/` locally)
+- `$COLDCACHE_DATA_DIR/cases/` — stored originals per case
 
 Back up both together:
 ```bash
@@ -162,7 +164,7 @@ The dominant app architecture is now case-scoped:
 - blank **Case Home** on `/`
 - case CRUD via `/cases`
 - durable evidence/job/event records in SQLite
-- files stored under `data/cases/<case_id>/...`
+- files stored under `$COLDCACHE_DATA_DIR/cases/<case_id>/...`
 - one immutable Cognee dataset name per case
 - reload-safe analysis/ingestion jobs with lease recovery
 - case-scoped graph/chat/timeline/interrogation/what-if/report endpoints
@@ -290,7 +292,7 @@ python benchmark/benchmark.py --naive
 - Watch `GET /health` for the `fallback` block.
 
 **Case uploads survive reload, but not deletion/restoration mistakes**
-- Back up both `data/coldcache.db` and `data/cases/` together.
+- Back up the app database, case files, and Cognee stores together; see `DEPLOYMENT.md`.
 
 **Mock mode vs live mode confusion**
 - `GET /health` is the source of truth.

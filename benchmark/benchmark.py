@@ -193,6 +193,46 @@ def plot(results: list[dict]) -> None:
     print(f"chart -> {OUT_CHART}")
 
 
+def save_markdown_and_push(results: list[dict]) -> None:
+    md_path = ROOT / "benchmark" / "benchmark_results.md"
+    lines = ["# Benchmark Results\n"]
+    
+    # Summary table
+    lines.append("## Summary\n")
+    lines.append(f"| {'Retriever':<16} | {'Split':<11} | {'R@3':>5} | {'R@5':>5} | {'MRR':>5} | {'n':>4} |")
+    lines.append("|---|---|---|---|---|---|")
+    for res in results:
+        for t in ("single_hop", "multi_hop", "all"):
+            b = res["by_type"][t]
+            lines.append(f"| {res['retriever']:<16} | {t:<11} | {b['recall@3']:>5.3f} | {b['recall@5']:>5.3f} | {b['mrr']:>5.3f} | {b['n']:>4} |")
+    
+    lines.append("\n## Granular Results\n")
+    for res in results:
+        lines.append(f"### {res['retriever']}\n")
+        lines.append(f"| {'Query ID':<10} | {'Type':<11} | {'R@3':>5} | {'R@5':>5} | {'MRR':>5} | {'Top Ranked (first 3)'} |")
+        lines.append("|---|---|---|---|---|---|")
+        for row in res["rows"]:
+            top_ranked = ", ".join(row["ranked_top5"][:3])
+            if len(top_ranked) > 40:
+                top_ranked = top_ranked[:37] + "..."
+            lines.append(f"| {row['id']:<10} | {row['type']:<11} | {row['recall@3']:>5.2f} | {row['recall@5']:>5.2f} | {row['mrr']:>5.2f} | {top_ranked} |")
+        lines.append("\n")
+
+    md_path.write_text("\n".join(lines))
+    print(f"markdown -> {md_path}")
+    
+    # Auto push
+    import subprocess
+    print("Pushing results to github...")
+    try:
+        subprocess.run(["git", "add", str(md_path), str(OUT_JSON), str(OUT_CHART)], check=True)
+        subprocess.run(["git", "commit", "-m", "chore: auto-save benchmark results"], check=True)
+        subprocess.run(["git", "push"], check=True)
+        print("Push successful.")
+    except Exception as e:
+        print(f"Failed to push: {e}")
+
+
 async def main(naive_only: bool) -> None:
     docs = load_docs()
     ids = known_ids(docs)
@@ -221,6 +261,7 @@ async def main(naive_only: bool) -> None:
     OUT_JSON.write_text(json.dumps(results, indent=2))
     print(f"results -> {OUT_JSON}")
     plot(results)
+    save_markdown_and_push(results)
 
 
 if __name__ == "__main__":

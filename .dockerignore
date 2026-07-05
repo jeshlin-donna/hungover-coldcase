@@ -1,0 +1,11 @@
+.git
+.venv
+.env
+backups
+data/cases
+data/coldcache.db*
+data/upload_tmp
+frontend/node_modules
+frontend/dist
+__pycache__
+*.pyc
