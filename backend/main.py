@@ -710,6 +710,8 @@ SAMPLE_EVIDENCE_DIR = ROOT / "data" / "sample_evidence"
 SAMPLE_CASES = [
     {"id": "case-01-millbrook-heights", "label": "Millbrook Heights Burglary",
      "description": "Residential burglary — suspect Daniel Marsh."},
+    {"id": "case-06-maple-heights-series", "label": "Maple Heights / Riverside Burglary Series",
+     "description": "Three linked burglaries across two jurisdictions, 23 months, one suspect — Daniel R. Marsh."},
 ]
 MAX_FILE_BYTES = 25 * 1024 * 1024
 MAX_BATCH_BYTES = 250 * 1024 * 1024

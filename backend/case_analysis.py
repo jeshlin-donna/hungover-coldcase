@@ -110,18 +110,32 @@ def build(case: dict, evidence_items: list[dict]) -> dict:
                 for fact in set(facts): edge(examiner, fact, "examined", source)
 
         dates = re.findall(r"\b20\d{2}-\d{2}-\d{2}\b", text)
+        # Per-document jurisdiction/case-ref labels, when present, let the timeline
+        # color-code and cross-reference events across departments (e.g. the bundled
+        # multi-jurisdiction hero case). Falls back to the case's own jurisdiction.
+        jur_match = re.search(r"(?im)^JURISDICTION\s*:\s*([^\n(]+)", text)
+        jurisdiction = (jur_match.group(1).strip() if jur_match else case.get("jurisdiction")) or None
+        case_ref_match = re.search(r"(?im)^CASE\s*:\s*([^\n]+)", text)
+        case_ref = case_ref_match.group(1).strip() if case_ref_match else None
+        is_key_event = bool(re.search(r"(?i)\barrest(?:ed)?\b|\bconfession\b|\bconvicted\b|\bapprehended\b", text))
+
         # Structured CSV-like time/event rows.
         for tm, event, confidence in re.findall(r"(?m)^\s*(\d{2}:\d{2})\s+(.+?)\s+(0\.\d+|1\.0+)\s*$", text):
             timeline.append({"date": dates[0] if dates else case.get("incident_date"), "time": tm,
                              "title": event.strip(), "summary": f"Confidence {confidence}",
-                             "evidence_id": item["id"], "source": item["original_filename"]})
+                             "evidence_id": item["id"], "source": item["original_filename"],
+                             "jurisdiction": jurisdiction, "case_ref": case_ref,
+                             "is_key_event": is_key_event and bool(re.search(r"(?i)arrest|confession|convicted|apprehended", event))})
         for date, location, amount, notes in re.findall(r"(?m)^\s*(20\d{2}-\d{2}-\d{2})\s+(.+?)\s+(\d+\.\d{2})\s+\d+\s+(.+)$", text):
             timeline.append({"date": date, "time": None, "title": notes.strip(),
                              "summary": f"{location.strip()} · ${amount}", "evidence_id": item["id"],
-                             "source": item["original_filename"]})
+                             "source": item["original_filename"], "jurisdiction": jurisdiction,
+                             "case_ref": case_ref, "is_key_event": False})
         if dates and not any(event["evidence_id"] == item["id"] for event in timeline):
             timeline.append({"date": dates[0], "time": None, "title": item["original_filename"],
-                             "summary": text.splitlines()[0][:180], "evidence_id": item["id"], "source": item["original_filename"]})
+                             "summary": text.splitlines()[0][:180], "evidence_id": item["id"],
+                             "source": item["original_filename"], "jurisdiction": jurisdiction,
+                             "case_ref": case_ref, "is_key_event": is_key_event})
 
     timeline.sort(key=lambda event: (event.get("date") or "9999-12-31", event.get("time") or ""))
     people = [node for node in nodes.values() if node["type"] == "person"]
