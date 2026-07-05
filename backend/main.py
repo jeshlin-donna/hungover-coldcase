@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import functools
+import gc
 import hashlib
 import json
 import logging
@@ -187,9 +188,36 @@ def _note_fallback(reason: str) -> None:
     print(f"[fallback] Groq unavailable ({reason}) — switched to local model for this request")
 
 
+def _downscale_image(content: bytes, max_dim: int = 1024, quality: int = 80) -> bytes:
+    """Shrink oversized images before they're base64-encoded and sent to a vision
+    model. Keeps memory/network payload bounded on low-RAM hosts (e.g. Render's
+    free 512MB tier). Falls back to the original bytes if cv2 isn't available or
+    decoding fails — this is a best-effort optimization, not a correctness path."""
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return content
+    try:
+        arr = np.frombuffer(content, dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if img is None:
+            return content
+        h, w = img.shape[:2]
+        scale = max_dim / max(h, w)
+        if scale < 1:
+            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
+        return buf.tobytes() if ok else content
+    except Exception:
+        return content
+
+
 async def describe_image(content: bytes, filename: str, media_type: str) -> str:
     """Describe an image forensically. Prefer Groq when configured, but preserve
     Samuel's local-Ollama path and Jeshlin's Groq→local fallback tracking."""
+    content = await asyncio.to_thread(_downscale_image, content)
+    media_type = "image/jpeg"
     b64 = base64.standard_b64encode(content).decode()
     prompt_text = _VISION_PROMPT.format(filename=filename)
     groq_error = None
@@ -382,9 +410,10 @@ async def extract_video_description(content: bytes, filename: str) -> str:
             try:
                 fps = cap.get(cv2.CAP_PROP_FPS) or 1
                 total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                # 1 frame every 10 seconds, max 5 frames
-                interval = max(1, int(fps * 10))
-                frame_indices = list(range(0, total, interval))[:5]
+                # 1 frame every 15 seconds, max 3 frames — kept small to bound
+                # peak memory on low-RAM hosts (e.g. Render's free 512MB tier)
+                interval = max(1, int(fps * 15))
+                frame_indices = list(range(0, total, interval))[:3]
                 frames = []
                 for idx in frame_indices:
                     cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
@@ -774,6 +803,11 @@ async def _durable_job_worker():
             raise
         except Exception as e:
             await asyncio.to_thread(case_store.fail_job, job, str(e))
+        finally:
+            # Analyze/ingest jobs can hold sizable transient buffers (image/video
+            # frames, PDF pixmaps). Force a collection between jobs so peak RSS
+            # doesn't creep up across a multi-file batch on low-RAM hosts.
+            gc.collect()
 
 
 @app.on_event("startup")
