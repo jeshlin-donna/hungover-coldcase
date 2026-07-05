@@ -192,13 +192,19 @@ async def cognify(dataset: str = DEFAULT_DATASET, typed_schema: bool = True,
     model occasionally emits invalid structured tool-call output (bad enum values, malformed
     function-call text) that exhausts Cognee/instructor's internal retries and raises a hard
     BadRequestError/RateLimitError. _cognify_with_local_fallback() catches that and retries
-    once against local Ollama before giving up."""
-    try:
-        await _run_cognify(dataset, typed_schema, data_per_batch, chunk_size)
-    except Exception as e:
-        if not _using_groq_for_cognee():
-            raise
-        await _cognify_with_local_fallback(dataset, typed_schema, data_per_batch, chunk_size, str(e))
+    once against local Ollama before giving up.
+
+    The whole call (primary attempt + any fallback) runs under _llm_swap_lock: Cognee's LLM
+    config is a process-global mutable, so an unlocked primary-path call could otherwise run
+    concurrently with another request's local-Ollama fallback and silently pick up a
+    swapped/half-restored config instead of the intended Groq one."""
+    async with _llm_swap_lock:
+        try:
+            await _run_cognify(dataset, typed_schema, data_per_batch, chunk_size)
+        except Exception as e:
+            if not _using_groq_for_cognee():
+                raise
+            await _cognify_with_local_fallback(dataset, typed_schema, data_per_batch, chunk_size, str(e))
     _triplet_ready_datasets.discard(dataset)
 
 
@@ -207,39 +213,40 @@ async def _cognify_with_local_fallback(dataset: str, typed_schema: bool, data_pe
     """Swaps Cognee's global LLM config to local Ollama and retries cognify() once. Local
     models are typically *worse* than Groq at strict-schema tool calling, so if the typed
     (ColdCaseGraph) extraction fails again locally, we drop down to untyped free-form
-    extraction as a last resort — better a loosely-typed graph than a hard ingest failure."""
-    async with _llm_swap_lock:
-        print(f"[fallback] Cognee/Groq cognify failed ({reason}) — retrying ingestion via local Ollama model")
-        original = {
-            "provider": os.getenv("LLM_PROVIDER"),
-            "model": os.getenv("LLM_MODEL"),
-            "endpoint": os.getenv("LLM_ENDPOINT"),
-            "api_key": os.getenv("LLM_API_KEY"),
-        }
+    extraction as a last resort — better a loosely-typed graph than a hard ingest failure.
+
+    Caller (cognify()) already holds _llm_swap_lock for the duration of this call."""
+    print(f"[fallback] Cognee/Groq cognify failed ({reason}) — retrying ingestion via local Ollama model")
+    original = {
+        "provider": os.getenv("LLM_PROVIDER"),
+        "model": os.getenv("LLM_MODEL"),
+        "endpoint": os.getenv("LLM_ENDPOINT"),
+        "api_key": os.getenv("LLM_API_KEY"),
+    }
+    try:
+        cognee.config.set_llm_provider("ollama")
+        cognee.config.set_llm_model(os.getenv("OLLAMA_TEXT_MODEL", "llama3.1:8b"))
+        cognee.config.set_llm_endpoint(os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/v1"))
+        cognee.config.set_llm_api_key("ollama")
         try:
-            cognee.config.set_llm_provider("ollama")
-            cognee.config.set_llm_model(os.getenv("OLLAMA_TEXT_MODEL", "llama3.1:8b"))
-            cognee.config.set_llm_endpoint(os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/v1"))
-            cognee.config.set_llm_api_key("ollama")
-            try:
-                await _run_cognify(dataset, typed_schema, data_per_batch, chunk_size)
-            except Exception as local_typed_err:
-                if not typed_schema:
-                    raise
-                print(f"[fallback] local typed-schema cognify also failed ({local_typed_err}) "
-                      "— retrying with untyped extraction")
-                await _run_cognify(dataset, False, data_per_batch, chunk_size)
-        finally:
-            # Always restore the original (Groq) config so the next request goes
-            # back to the faster hosted provider rather than staying stuck local.
-            if original["provider"] is not None:
-                cognee.config.set_llm_provider(original["provider"])
-            if original["model"] is not None:
-                cognee.config.set_llm_model(original["model"])
-            if original["endpoint"] is not None:
-                cognee.config.set_llm_endpoint(original["endpoint"])
-            if original["api_key"] is not None:
-                cognee.config.set_llm_api_key(original["api_key"])
+            await _run_cognify(dataset, typed_schema, data_per_batch, chunk_size)
+        except Exception as local_typed_err:
+            if not typed_schema:
+                raise
+            print(f"[fallback] local typed-schema cognify also failed ({local_typed_err}) "
+                  "— retrying with untyped extraction")
+            await _run_cognify(dataset, False, data_per_batch, chunk_size)
+    finally:
+        # Always restore the original (Groq) config so the next request goes
+        # back to the faster hosted provider rather than staying stuck local.
+        if original["provider"] is not None:
+            cognee.config.set_llm_provider(original["provider"])
+        if original["model"] is not None:
+            cognee.config.set_llm_model(original["model"])
+        if original["endpoint"] is not None:
+            cognee.config.set_llm_endpoint(original["endpoint"])
+        if original["api_key"] is not None:
+            cognee.config.set_llm_api_key(original["api_key"])
 
 
 async def prepare_insights(dataset: str = DEFAULT_DATASET) -> None:
@@ -350,22 +357,27 @@ def _using_groq_for_cognee() -> bool:
 async def _search_with_local_fallback(query_text: str, query_type, datasets: list[str]):
     """Runs cognee.search(), and if Groq errored or returned a degraded/empty answer,
     retries once against a local Ollama model (default llama3.1:8b — already used
-    elsewhere in this repo for the offline-Ollama option, see .env.example)."""
-    try:
-        raw = await cognee.search(query_text=query_text, query_type=query_type, datasets=datasets)
-        answer_preview = _extract_answer_text(raw)
-        if not _is_degraded_answer(answer_preview):
-            return raw, False
-        reason = f"degraded reply ({answer_preview!r})"
-    except Exception as e:
-        reason = str(e)
+    elsewhere in this repo for the offline-Ollama option, see .env.example).
 
-    if not _using_groq_for_cognee():
-        # Not routed through Groq in the first place (or already local) — nothing
-        # to fall back to; surface the original failure/degraded result untouched.
-        raise RuntimeError(reason)
-
+    The whole call (primary attempt + any fallback) runs under _llm_swap_lock: Cognee's
+    LLM config is a process-global mutable, so an unlocked primary-path call could
+    otherwise race with another request's local-Ollama fallback and silently observe a
+    swapped/half-restored config instead of the intended Groq one."""
     async with _llm_swap_lock:
+        try:
+            raw = await cognee.search(query_text=query_text, query_type=query_type, datasets=datasets)
+            answer_preview = _extract_answer_text(raw)
+            if not _is_degraded_answer(answer_preview):
+                return raw, False
+            reason = f"degraded reply ({answer_preview!r})"
+        except Exception as e:
+            reason = str(e)
+
+        if not _using_groq_for_cognee():
+            # Not routed through Groq in the first place (or already local) — nothing
+            # to fall back to; surface the original failure/degraded result untouched.
+            raise RuntimeError(reason)
+
         print(f"[fallback] Cognee/Groq unavailable ({reason}) — retrying via local Ollama model")
         original = {
             "provider": os.getenv("LLM_PROVIDER"),

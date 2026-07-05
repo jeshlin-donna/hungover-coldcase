@@ -8,7 +8,7 @@ function cachedCases() {
   catch { return []; }
 }
 
-export default function CaseHome({ onOpen }) {
+export default function CaseHome({ onOpen, onBack }) {
   const [cases, setCases] = useState(cachedCases);
   const [loading, setLoading] = useState(true);
   const [usingCache, setUsingCache] = useState(false);
@@ -44,7 +44,10 @@ export default function CaseHome({ onOpen }) {
 
   return <div className="case-home">
     <div className="case-home-header"><div><div className="header-logo">🔍</div><h1>ColdCache</h1><p>Case memory that survives the browser.</p></div>
-      <button className="next-btn" onClick={() => setCreating(true)}>Create case</button></div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {onBack && <button className="btn-improve" onClick={onBack}>← Back to case</button>}
+        <button className="next-btn" onClick={() => setCreating(true)}>Create case</button>
+      </div></div>
     {error && <div className={usingCache ? "upload-note" : "upload-error"}>{error}{usingCache ? " Showing the last known case list." : ""}</div>}
     {loading && cases.length === 0 && <div className="case-empty"><span className="batch-spinner" /><h2>Loading cases…</h2><p>Connecting to the persistent case database.</p></div>}
     {!loading && !error && !creating && cases.length === 0 && <div className="case-empty">
@@ -53,12 +56,12 @@ export default function CaseHome({ onOpen }) {
       <button className="upload-btn" onClick={() => setCreating(true)}>Create your first case</button>
     </div>}
     {creating && <form className="case-create-form" onSubmit={create}>
-      <div className="row"><div><h2>Create case</h2><p>Only the title is required. You can add details later.</p></div><button type="button" className="dismiss-btn" onClick={() => setCreating(false)}>Cancel</button></div>
-      <label>Case title *<input autoFocus required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Oak Street burglary series" /></label>
+      <div className="row"><div><h2>Create case</h2><p>All fields are optional — you can add details, including the name, later.</p></div><button type="button" className="dismiss-btn" onClick={() => setCreating(false)}>Cancel</button></div>
+      <label>Case title<input autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Untitled Case (optional)" /></label>
       <div className="case-form-grid"><label>Reference number<input value={form.reference_number} onChange={(e) => setForm({ ...form, reference_number: e.target.value })} placeholder="CC-2026-014" /></label>
       <label>Jurisdiction<input value={form.jurisdiction} onChange={(e) => setForm({ ...form, jurisdiction: e.target.value })} placeholder="Maple Heights PD" /></label></div>
       <label>Description<textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief case context…" /></label>
-      <button className="next-btn" type="submit" disabled={!form.title.trim()}>Create and open case</button>
+      <button className="next-btn" type="submit">Create and open case</button>
     </form>}
     {!creating && cases.length > 0 && <div className="case-grid">{cases.map((item) =>
       <div className="case-card" role="button" tabIndex="0" key={item.id} onClick={() => onOpen(item)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(item); }}>

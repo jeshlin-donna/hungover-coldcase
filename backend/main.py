@@ -19,18 +19,24 @@ import base64
 import functools
 import hashlib
 import json
+import logging
+import os
 import re
 import secrets
+import time
 import uuid
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, Header, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from backend import case_store
 from backend import case_analysis
+
+logger = logging.getLogger("coldcache")
 
 IMAGE_TYPES = {
     "image/jpeg": "image/jpeg",
@@ -463,6 +469,24 @@ HERO = ROOT / "data" / "hero_case"
 DATASET = "coldcases"
 UPLOADED_NODES: list[dict] = []
 PENDING_INGESTIONS: dict[str, dict] = {}
+PENDING_INGESTIONS_MAX = 500
+PENDING_INGESTIONS_TTL_SECONDS = 30 * 60  # unconfirmed analyses expire after 30 min
+
+
+def _sweep_pending_ingestions() -> None:
+    """Evict stale/never-confirmed review entries so an abandoned or repeatedly
+    analyzed (but never confirmed) batch can't grow PENDING_INGESTIONS forever."""
+    now = datetime.now(timezone.utc)
+    stale = [
+        rid for rid, item in PENDING_INGESTIONS.items()
+        if (now - datetime.fromisoformat(item["created_at"])).total_seconds() > PENDING_INGESTIONS_TTL_SECONDS
+    ]
+    for rid in stale:
+        PENDING_INGESTIONS.pop(rid, None)
+    if len(PENDING_INGESTIONS) > PENDING_INGESTIONS_MAX:
+        oldest_first = sorted(PENDING_INGESTIONS.items(), key=lambda kv: kv[1]["created_at"])
+        for rid, _ in oldest_first[: len(PENDING_INGESTIONS) - PENDING_INGESTIONS_MAX]:
+            PENDING_INGESTIONS.pop(rid, None)
 
 # --- Legacy/global case label helper: either a manual override (POST /case-name)
 # or an auto-generated short label derived from legacy uploaded evidence. The
@@ -487,9 +511,40 @@ except Exception as e:  # pragma: no cover
     print(f"[backend] DEGRADED mode ({type(e).__name__}: {e}) — serving mock data")
 
 app = FastAPI(title="ColdCache — Cold Case Connector")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
+
+# Restrict cross-origin access once deployed publicly: allow local dev by default,
+# plus any origins listed in ALLOWED_ORIGINS (comma-separated, e.g. your Vercel
+# frontend URL). Falls back to "*" only if explicitly opted into via ALLOW_ANY_ORIGIN.
+_default_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+_extra_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+_cors_origins = ["*"] if os.getenv("ALLOW_ANY_ORIGIN") == "true" else (_default_origins + _extra_origins)
+app.add_middleware(CORSMiddleware, allow_origins=_cors_origins, allow_methods=["*"],
                    allow_headers=["*"])
 
+# --- Minimal abuse guard for a public, no-login demo: a shared secret protecting
+# destructive routes (delete case/evidence, expunge), and a per-IP sliding-window
+# rate limit on the LLM-cost-triggering routes (upload/analyze/transcribe). Both
+# are no-ops locally unless explicitly configured, so local dev is unaffected. ---
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN") or None
+
+def require_admin(x_admin_token: str | None = Header(default=None)):
+    if ADMIN_TOKEN and x_admin_token != ADMIN_TOKEN:
+        raise HTTPException(403, "Missing or invalid admin token for this destructive action.")
+
+_RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX_PER_MINUTE", "20"))
+_rate_buckets: dict[str, deque] = defaultdict(deque)
+
+def rate_limit(request: Request):
+    if _RATE_LIMIT_MAX <= 0:
+        return  # disabled
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    bucket = _rate_buckets[client_ip]
+    while bucket and now - bucket[0] > 60:
+        bucket.popleft()
+    if len(bucket) >= _RATE_LIMIT_MAX:
+        raise HTTPException(429, "Too many requests — please slow down and try again shortly.")
+    bucket.append(now)
 
 @functools.lru_cache(maxsize=32)
 def _read_mock_file(name: str) -> str:
@@ -577,7 +632,7 @@ class BatchConfirmIngestReq(BaseModel):
     items: list[ConfirmIngestReq]
 
 class CaseCreateReq(BaseModel):
-    title: str
+    title: str | None = None
     reference_number: str | None = None
     description: str | None = None
     jurisdiction: str | None = None
@@ -600,9 +655,39 @@ class EvidenceDraftReq(BaseModel):
     context: str = ""
     expected_updated_at: str | None = None
 
+class SampleSeedReq(BaseModel):
+    sample_case: str
+
 MAX_FILES_PER_BATCH = 50
+
+# --- Bundled sample cases (data/sample_evidence/*) — let users without their own
+# files "play with the app" by seeding a real case from pre-made synthetic evidence
+# instead of uploading anything themselves. See data/sample_evidence/README.md. ---
+SAMPLE_EVIDENCE_DIR = ROOT / "data" / "sample_evidence"
+SAMPLE_CASES = [
+    {"id": "case-01-millbrook-heights", "label": "Millbrook Heights Burglary",
+     "description": "Residential burglary — suspect Daniel Marsh."},
+    {"id": "case-03-oakdale-jewelry", "label": "Oakdale Jewelry Heist",
+     "description": "Jewelry store heist — suspect Renata Kovic."},
+    {"id": "case-04-lakeside-arson", "label": "Lakeside Warehouse Arson",
+     "description": "Warehouse arson — suspect Miguel Torres."},
+]
 MAX_FILE_BYTES = 25 * 1024 * 1024
 MAX_BATCH_BYTES = 250 * 1024 * 1024
+
+
+async def _read_capped(upload: UploadFile, max_bytes: int = MAX_FILE_BYTES) -> bytes:
+    """Read an UploadFile in chunks, aborting with 413 before buffering more than
+    max_bytes into memory. Used by the legacy single-file routes below, which
+    (unlike the case-scoped batch upload) previously had no size limit at all."""
+    chunks = []
+    total = 0
+    while chunk := await upload.read(1024 * 1024):
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(413, f"{upload.filename or 'file'} exceeds the {max_bytes // (1024*1024)} MB limit.")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 _worker_task = None
@@ -697,14 +782,15 @@ async def stop_durable_worker():
 # --- routes (match API_CONTRACT.md) ------------------------------------------
 @app.post("/cases", status_code=201)
 async def create_case(req: CaseCreateReq):
-    from fastapi import HTTPException
-    if not req.title.strip():
-        raise HTTPException(422, "Case title is required.")
-    return await asyncio.to_thread(case_store.create_case, req.model_dump())
+    payload = req.model_dump()
+    # Naming a case is optional — a blank/omitted title just becomes "Untitled Case"
+    # so users can start dropping files immediately without a naming prompt.
+    payload["title"] = (payload.get("title") or "").strip() or "Untitled Case"
+    return await asyncio.to_thread(case_store.create_case, payload)
 
 
 @app.get("/cases")
-async def cases_list():
+async def cases_list(_admin=Depends(require_admin)):
     return {"cases": await asyncio.to_thread(case_store.list_cases)}
 
 
@@ -744,7 +830,7 @@ async def case_restore(case_id: str):
 
 @app.delete("/cases/{case_id}", status_code=204)
 async def case_delete(case_id: str):
-    from fastapi import HTTPException, Response
+    from fastapi import Response
     case = await asyncio.to_thread(case_store.get_case, case_id)
     if not case: raise HTTPException(404, "Case not found.")
     try:
@@ -756,7 +842,8 @@ async def case_delete(case_id: str):
 
 @app.post("/cases/{case_id}/evidence", status_code=202)
 async def case_upload_evidence(
-    case_id: str, files: list[UploadFile] = File(...), contexts: str = Form("[]")
+    case_id: str, files: list[UploadFile] = File(...), contexts: str = Form("[]"),
+    _rl=Depends(rate_limit),
 ):
     from fastapi import HTTPException
     if not await asyncio.to_thread(case_store.get_case, case_id):
@@ -794,6 +881,49 @@ async def case_upload_evidence(
         finally:
             temp_path.unlink(missing_ok=True)
         results.append({"evidence": item, "job": job, "duplicate_skipped": job is None})
+    return {"ok": True, "results": results}
+
+
+@app.get("/sample-cases")
+async def sample_cases_list():
+    """Bundled synthetic evidence sets a user can seed into a real case with one
+    click, for trying the app without gathering their own files first."""
+    import mimetypes
+    out = []
+    for entry in SAMPLE_CASES:
+        folder = SAMPLE_EVIDENCE_DIR / entry["id"]
+        file_count = len([f for f in folder.glob("*") if f.is_file()]) if folder.is_dir() else 0
+        out.append({**entry, "file_count": file_count})
+    return {"sample_cases": out}
+
+
+@app.post("/cases/{case_id}/evidence/seed-sample", status_code=202)
+async def case_seed_sample(case_id: str, req: SampleSeedReq, _rl=Depends(rate_limit)):
+    from fastapi import HTTPException
+    case = await asyncio.to_thread(case_store.get_case, case_id)
+    if not case: raise HTTPException(404, "Case not found.")
+    if case["status"] == "archived": raise HTTPException(409, "Archived cases are read-only.")
+    import mimetypes
+    folder_name = Path(req.sample_case).name  # defensive: no path traversal
+    if folder_name not in {c["id"] for c in SAMPLE_CASES}:
+        raise HTTPException(422, "Unknown sample case.")
+    folder = SAMPLE_EVIDENCE_DIR / folder_name
+    if not folder.is_dir(): raise HTTPException(404, "Sample case files are missing on the server.")
+    files = sorted(f for f in folder.glob("*") if f.is_file())
+    if not files: raise HTTPException(404, "Sample case has no files.")
+
+    def _seed():
+        results = []
+        for path in files:
+            content = path.read_bytes()
+            media_type = mimetypes.guess_type(path.name)[0] or _media_type_for(path.name)
+            item, job = case_store.save_evidence(
+                case_id, path.name, content, media_type, _file_modality(path.name), ""
+            )
+            results.append({"evidence": item, "job": job, "duplicate_skipped": job is None})
+        return results
+
+    results = await asyncio.to_thread(_seed)
     return {"ok": True, "results": results}
 
 
@@ -1307,7 +1437,7 @@ async def resolve(req: ResolveReq):
 
 
 @app.post("/expunge")
-async def expunge(req: ExpungeReq):
+async def expunge(req: ExpungeReq, _admin=Depends(require_admin)):
     if LIVE:
         await mem.expunge(dataset=DATASET)
     g = mock("graph.json")
@@ -1636,15 +1766,16 @@ async def suspect_timeline(suspect: str = "daniel-marsh"):
 
 
 @app.post("/transcribe")
-async def transcribe_audio_endpoint(file: UploadFile = File(...)):
-    content = await file.read()
+async def transcribe_audio_endpoint(file: UploadFile = File(...), _rl=Depends(rate_limit)):
+    content = await _read_capped(file)
     fname = file.filename or "recording.webm"
     if LIVE:
         try:
             text = await transcribe_audio(content, fname)
             return {"text": text, "mode": "live"}
         except Exception as e:
-            return {"text": "", "error": str(e), "mode": "live"}
+            logger.exception("Transcription failed")
+            return {"text": "", "error": "Transcription failed. Please try again.", "mode": "live"}
     return {"text": "Mock: voice input received. In live mode, Whisper transcribes your query.", "mode": "degraded"}
 
 
@@ -1674,21 +1805,22 @@ async def _extract_upload(content: bytes, fname: str) -> tuple[str, str | None]:
 
 
 @app.post("/ingest-file/analyze")
-async def analyze_ingest_file(file: UploadFile = File(...), context: str = Form("")):
-    content = await file.read()
+async def analyze_ingest_file(file: UploadFile = File(...), context: str = Form(""), _rl=Depends(rate_limit)):
+    content = await _read_capped(file)
     fname = file.filename or "unknown"
     modality = _file_modality(fname)
     try:
         extracted_text, description = await _extract_upload(content, fname)
     except Exception as e:
-        from fastapi import HTTPException
-        raise HTTPException(502, f"Evidence analysis failed: {e}")
+        logger.exception("Evidence analysis failed for %s", fname)
+        raise HTTPException(502, "Evidence analysis failed. Please try again.")
     if context.strip():
         extracted_text = (
             f"USER-PROVIDED SUBMISSION CONTEXT\n{context.strip()}\n\n"
             f"MODEL-GENERATED / EXTRACTED CONTENT — REVIEW BEFORE INGESTION\n{extracted_text}"
         )
     review_id = secrets.token_urlsafe(18)
+    _sweep_pending_ingestions()
     PENDING_INGESTIONS[review_id] = {
         "filename": fname, "size_bytes": len(content), "modality": modality,
         "extracted_text": extracted_text, "context": context.strip(),
@@ -1706,9 +1838,9 @@ async def analyze_ingest_file(file: UploadFile = File(...), context: str = Form(
 async def analyze_ingest_files(
     files: list[UploadFile] = File(...),
     contexts: str = Form("[]"),
+    _rl=Depends(rate_limit),
 ):
     """Analyze a batch with per-file results; one bad file never aborts its siblings."""
-    from fastapi import HTTPException
     try:
         parsed_contexts = json.loads(contexts)
     except json.JSONDecodeError as e:
@@ -1723,7 +1855,7 @@ async def analyze_ingest_files(
         modality = _file_modality(fname)
         try:
             async with semaphore:
-                content = await upload.read()
+                content = await _read_capped(upload)
                 extracted_text, description = await _extract_upload(content, fname)
             if context:
                 extracted_text = (
@@ -1731,6 +1863,7 @@ async def analyze_ingest_files(
                     f"MODEL-GENERATED / EXTRACTED CONTENT — REVIEW BEFORE INGESTION\n{extracted_text}"
                 )
             review_id = secrets.token_urlsafe(18)
+            _sweep_pending_ingestions()
             PENDING_INGESTIONS[review_id] = {
                 "filename": fname, "size_bytes": len(content), "modality": modality,
                 "extracted_text": extracted_text, "context": context,
@@ -1740,9 +1873,12 @@ async def analyze_ingest_files(
                     "filename": fname, "size_bytes": len(content), "type": modality,
                     "description": description, "extracted_text": extracted_text,
                     "context": context, "requires_confirmation": True}
-        except Exception as e:
+        except HTTPException as e:
+            return {"ok": False, "index": index, "filename": fname, "error": e.detail}
+        except Exception:
+            logger.exception("Evidence analysis failed for %s", fname)
             return {"ok": False, "index": index, "filename": fname,
-                    "error": f"Evidence analysis failed: {e}"}
+                    "error": "Evidence analysis failed. Please try again."}
 
     results = await asyncio.gather(*(
         analyze_one(i, upload, parsed_contexts[i]) for i, upload in enumerate(files)
@@ -1801,12 +1937,11 @@ async def confirm_ingest_files(req: BatchConfirmIngestReq):
 
 
 @app.post("/ingest-file")
-async def ingest_file(file: UploadFile = File(...)):
+async def ingest_file(file: UploadFile = File(...), _rl=Depends(rate_limit)):
     """Compatibility route: text files still use analyze + immediate confirmation."""
-    content = await file.read()
+    content = await _read_capped(file)
     fname = file.filename or "unknown"
     if _file_modality(fname) != "text":
-        from fastapi import HTTPException
         raise HTTPException(409, "Non-text evidence must use analyze and confirm.")
     extracted_text, _ = await _extract_upload(content, fname)
     if LIVE and extracted_text:

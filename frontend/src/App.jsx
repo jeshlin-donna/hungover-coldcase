@@ -65,6 +65,8 @@ const GUIDE_SEEN_KEY = "coldcache_guide_seen";
 
 export default function App() {
   const [activeCase, setActiveCase] = useState(null);
+  const [bootstrapping, setBootstrapping] = useState(true);
+  const [showCaseHome, setShowCaseHome] = useState(false);
   const [tab, setTab] = useState("upload");
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [mode, setMode] = useState(null);
@@ -84,6 +86,8 @@ export default function App() {
       return true;
     }
   });
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
 
   function closeGuide() {
     setShowGuide(false);
@@ -195,10 +199,48 @@ export default function App() {
     setGraphData(null);
     setWorkspaceOpen(hasEvidence);
     setTab(hasEvidence ? "graph" : "upload");
+    setShowCaseHome(false);
   }
 
-  if (!activeCase) {
-    return <CaseHome onOpen={openCase} />;
+  async function saveTitle() {
+    const next = titleDraft.trim() || "Untitled Case";
+    setEditingTitle(false);
+    if (next === activeCase.title) return;
+    try {
+      const updated = await api.updateCase(activeCase.id, { title: next });
+      setActiveCase(updated);
+    } catch {
+      showToast("Could not rename the case. Check the backend connection.");
+    }
+  }
+
+  // Land directly on the Messy Desk (file import) for a real, brand-new case
+  // on every load — no "create case" prompt, and no stale evidence from a
+  // previous visit. Naming a case is optional and can be done anytime via the
+  // header label. (A new case row is created server-side each refresh; old
+  // ones are simply not resumed, not deleted.)
+  useEffect(() => {
+    let cancelled = false;
+    async function bootstrap() {
+      try {
+        const created = await api.createCase({ title: "" });
+        if (!cancelled) openCase(created);
+      } catch {
+        if (!cancelled) setShowCaseHome(true); // backend unreachable — let the user retry from the case list
+      } finally {
+        if (!cancelled) setBootstrapping(false);
+      }
+    }
+    bootstrap();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (bootstrapping) {
+    return <div className="case-home"><div className="case-empty"><span className="batch-spinner" /><h2>Opening your case…</h2><p>Setting up the workspace.</p></div></div>;
+  }
+
+  if (showCaseHome || !activeCase) {
+    return <CaseHome onOpen={openCase} onBack={activeCase ? () => setShowCaseHome(false) : undefined} />;
   }
 
   return (
@@ -212,7 +254,9 @@ export default function App() {
           <div className="header-logo">🔍</div>
           <div className="header-title-group">
             <h1>ColdCache</h1>
-            <span className="header-case-label">{activeCase.title}{activeCase.reference_number ? ` · ${activeCase.reference_number}` : ""}</span>
+            {editingTitle
+              ? <input autoFocus className="case-title-edit" value={titleDraft} onChange={(e) => setTitleDraft(e.target.value)} onBlur={saveTitle} onKeyDown={(e) => { if (e.key === "Enter") saveTitle(); if (e.key === "Escape") setEditingTitle(false); }} placeholder="Untitled Case (optional)" />
+              : <span className="header-case-label" title="Click to rename (optional)" onClick={() => { setTitleDraft(activeCase.title === "Untitled Case" ? "" : activeCase.title); setEditingTitle(true); }}>{activeCase.title}{activeCase.reference_number ? ` · ${activeCase.reference_number}` : ""} ✎</span>}
           </div>
 
           {improved && (
@@ -234,7 +278,6 @@ export default function App() {
         <div className="header-right">
           
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <button className="btn-improve" onClick={() => { setActiveCase(null); setWorkspaceOpen(false); }} title="Return to case list">All Cases</button>
             <button
               className="btn-improve"
               onClick={() => setShowGuide(true)}

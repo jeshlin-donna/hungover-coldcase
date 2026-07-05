@@ -142,6 +142,20 @@ header h1 {
   text-transform: uppercase;
   letter-spacing: 0.9px;
   font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+}
+.header-case-label:hover { color: var(--accent); }
+.case-title-edit {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 2px 6px;
+  width: 220px;
 }
 
 .tag { display: none; }
@@ -2716,6 +2730,9 @@ input:focus, textarea:focus, select:focus {
   object-fit: cover; border: 1px solid var(--line);
 }
 .batch-actions { justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }
+.batch-actions-top { justify-content: space-between; margin: 14px 0; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 10px; background: rgba(88,166,255,0.06); }
+.evidence-review-toggle { border: 0; background: transparent; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; font-weight: 600; }
+.evidence-review-toggle:hover { text-decoration: underline; }
 .batch-progress-banner {
   display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 13px 15px;
   border: 1px solid rgba(88, 166, 255, .4); border-radius: 10px;
@@ -2751,6 +2768,13 @@ input:focus, textarea:focus, select:focus {
 .case-card:hover { border-color: var(--accent); transform: translateY(-1px); }.case-card h3 { margin: 10px 0 5px; }.case-card p { color: var(--muted); min-height: 20px; }
 .case-card > div { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }.case-card-status { text-transform: uppercase; color: var(--win); font-size: 10px; }
 .muted-copy { color: var(--muted); font-size: 13px; }.durable-upload-ready { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
+.sample-case-panel { margin: 16px 0; }
+.sample-case-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(200px,1fr)); gap: 10px; margin-top: 10px; }
+.sample-case-card { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); cursor: pointer; font: inherit; }
+.sample-case-card:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); }
+.sample-case-card:disabled { opacity: 0.6; cursor: default; }
+.sample-case-card span { color: var(--muted); font-size: 12px; }
+.sample-case-count { font-weight: 600; }
 .durable-evidence-list { margin-top: 18px; }.durable-import .evidence-review-block .next-btn { margin-top: 10px; }
 @media (max-width: 640px) { .case-form-grid { grid-template-columns: 1fr; }.case-home-header { align-items: flex-start; }.case-home { padding: 24px 14px; } }
 .case-event-list { display: grid; gap: 12px; margin-top: 18px; }.case-event-list .incident-card { margin: 0; }
