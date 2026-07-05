@@ -1,0 +1,17 @@
+{$DOMAIN} {
+  encode zstd gzip
+
+  basic_auth {
+    {$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+  }
+
+  handle_path /api/* {
+    reverse_proxy backend:8000 {
+      flush_interval -1
+    }
+  }
+
+  handle {
+    reverse_proxy frontend:80
+  }
+}

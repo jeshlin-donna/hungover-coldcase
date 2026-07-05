@@ -97,14 +97,23 @@ class ColdCaseGraph(KnowledgeGraph):
 COLD_CASE_EXTRACTION_PROMPT = """\
 You are extracting a knowledge graph from police case files (narratives, forensic reports,
 witness statements, financial/alibi records) for a cold-case investigation tool.
+To leverage our hybrid vector-graph indexing system, resolve all ingested evidence into structured data points.
+Map unstructured inputs into the following specific entities and explicit relational edges.
 
-Only use these node types: Case, Person, Location, TimePoint, Evidence, Object.
-Only use these relationship names between nodes:
-  WAS_AT      (Person -> Location)       — an individual's presence at a place
-  AT_TIME     (Location -> TimePoint)    — binds a spatial presence to a chronological window
-  DEPICTS     (Evidence -> Person|Object|Location) — evidence confirms an entity was present
-  REPORTED_BY (Evidence -> Person)       — tracks who made a claim/statement (lineage)
-  CONTRADICTS (Evidence -> Evidence)     — two pieces of evidence assert incompatible facts
+Node Definitions (DataPoint Subclasses):
+- Person: The actors involved in the case. (id, name, role: Suspect/Witness/Victim, status)
+- Location: Physical spatial points where events occurred. (id, name, coordinates: Lat/Long, type)
+- TimePoint: Absolute chronological anchors. (id, timestamp, raw_label: e.g. "11:02 PM")
+- Evidence: Metadata wrapper tracking the raw asset source and lineage. (id, type: Audio/Video/Photo/Text, file_url, extracted_text, reliability_score)
+- Object: Material items relevant to the timeline. (id, description, category: Vehicle/Weapon, owner_id)
+- Case: The investigation case file record.
+
+Edge Definitions (Graph Relations):
+  WAS_AT      (Person -> Location)       — Maps an individual's presence to a specific place.
+  AT_TIME     (Location -> TimePoint)    — Binds a spatial presence to a distinct chronological window.
+  DEPICTS     (Evidence -> Person|Object|Location) — Confirms an entity was verified inside a raw piece of evidence.
+  REPORTED_BY (Evidence -> Person)       — Tracks the lineage of human assertions (who made the claim).
+  CONTRADICTS (Evidence -> Evidence)     — Core Flag: Machine-generated conflict edge mapping direct impossibilities.
   INVOLVED_IN (Person -> Case)           — stated role/person of interest; never implies guilt
   OCCURRED_AT (Case -> Location)         — incident location explicitly stated in the record
   HAS_EVIDENCE (Case -> Evidence)        — verified evidence belongs to this case
@@ -113,11 +122,10 @@ Only use these relationship names between nodes:
   EXAMINED (Person -> Evidence)           — named examiner handled/analyzed the evidence
 
 For every Person, capture role (Suspect/Witness/Victim) and status if stated.
-For every Location, capture coordinates/address if stated.
-For every TimePoint, capture the raw time label as written (e.g. "00:48", "11:02 PM").
-For every Evidence node, capture its type (Audio/Video/Photo/Text) and, if inferable, a
-reliability_score between 0 and 1 (direct forensic/digital records score higher than verbal
-alibi claims).
+For every Location, capture coordinates/address if stated, and type of location.
+For every TimePoint, capture the raw time label as written (e.g. "00:48", "11:02 PM") and a timestamp if inferable.
+For every Evidence node, capture its type (Audio/Video/Photo/Text), file_url if present, extracted_text, and a reliability_score (float 0.0 to 1.0).
+For every Object node, capture description, category (e.g. Vehicle/Weapon), and owner_id if stated.
 Do not invent facts that are not present in the source text. Prefer precise, sourced edges
 over speculative ones. Never create a relationship merely because two entities appear in the
 same document. Preserve CASE_ID, EVIDENCE_ID, and SOURCE_FILE provenance in descriptions.

@@ -51,7 +51,8 @@ When making changes, document clearly which surface you are touching.
 | Fallback system | ✅ | shipped |
 | Main-doc accuracy pass | ✅ | completed in this branch |
 | Full 3-way benchmark | 🔄 | still pending full live run |
-| Public-deployment hardening | ⬜ | auth/rate-limits still absent |
+| Private deployment hardening | ✅ | Docker Compose, persistent volume, TLS, Basic Auth, CORS, readiness |
+| Multi-user production controls | ⬜ | per-user identity, audit logging, application rate limits |
 
 ---
 
@@ -82,4 +83,4 @@ Expect to touch:
 1. Regenerate final benchmark numbers.
 2. Decide whether to fully remove unused legacy frontend components or restore them intentionally.
 3. Decide whether `/case-name` remains backend-only legacy functionality or should be removed/reworked for multi-case UX.
-4. Add auth / rate limiting before public long-lived hosting.
+4. Add per-user identity, audit logging, and application rate limits before sensitive multi-user hosting. The documented private deployment is protected at the edge with Basic Auth.

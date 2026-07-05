@@ -9,7 +9,7 @@ This started as the design plan for Samuel's case-persistence work. It now docum
 
 ColdCache's primary UI is a **durable multi-case workspace**:
 - the app opens on a blank **Case Home**
-- cases are created and stored in application SQLite
+- cases are created and stored in application SQLite (`COLDCACHE_DATA_DIR`, default `data/`)
 - every uploaded file belongs to exactly one case
 - evidence analysis and ingestion run as durable jobs
 - progress survives reloads and backend restarts
@@ -50,7 +50,7 @@ React case shell
                     ▼
 FastAPI case services (backend/main.py)
   ├─ SQLite app state via backend/case_store.py
-  ├─ file storage under data/cases/<case_id>/...
+  ├─ file storage under $COLDCACHE_DATA_DIR/cases/<case_id>/...
   ├─ durable worker with leases + recovery
   ├─ case analysis cache via backend/case_analysis.py
   └─ Cognee adapter via backend/memory_service.py

@@ -1556,6 +1556,71 @@ footer {
 
 .whatif-result { animation: fadeIn 0.35s ease; }
 
+.case-analysis-result {
+  margin-top: 18px;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.case-analysis-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.55px;
+  text-transform: uppercase;
+}
+
+.formatted-text {
+  min-width: 0;
+  max-width: 100%;
+  padding: 14px 16px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.formatted-text h4 {
+  margin: 16px 0 7px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
+}
+.formatted-text h4:first-child { margin-top: 0; }
+.formatted-text p { margin: 0 0 10px; }
+.formatted-text p:last-child { margin-bottom: 0; }
+.formatted-text strong { color: var(--text); font-weight: 700; }
+.formatted-text code {
+  color: #a8d1ff;
+  background: rgba(61,155,255,0.1);
+  border: 1px solid rgba(61,155,255,0.15);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 0.92em;
+  white-space: normal;
+}
+.formatted-bullet { display: grid; grid-template-columns: 12px minmax(0,1fr); gap: 6px; margin: 0 0 8px; }
+.formatted-bullet > span { color: var(--accent); }
+.formatted-bullet p { margin: 0; }
+.strategy-text.formatted-text, .chat-msg-text.formatted-text { padding: 0; }
+
+.workspace-split,
+.workspace-split > *,
+.workspace-split .tab-window,
+.workspace-split .panel,
+.chat-aside { min-width: 0; max-width: 100%; }
+
 .impact-row {
   display: flex;
   align-items: center;
@@ -2489,6 +2554,11 @@ header {
   .nexus-arrow-divider { transform: rotate(90deg); }
   .confidence-row { flex-wrap: wrap; }
   .conf-label { width: 100%; }
+}
+
+@media (max-width: 1100px) {
+  .workspace-split { grid-template-columns: minmax(0, 1fr) !important; }
+  .chat-aside .chat-panel { height: 500px; }
 }
 
 @media (max-width: 520px) {

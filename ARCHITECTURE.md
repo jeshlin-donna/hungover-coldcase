@@ -27,13 +27,14 @@ React case UI (frontend/src/App.jsx)
 FastAPI (backend/main.py)
   ├─ /cases*                       current app API
   ├─ /health                       mode + fallback state
+  ├─ /ready                        storage + database readiness
   ├─ /graph /recall /report ...    legacy/global demo API
   ├─ multimodal extractors
   └─ durable job worker
           │
           ├─ application SQLite + file store (backend/case_store.py)
-          │    ├─ data/coldcache.db
-          │    └─ data/cases/<case_id>/...
+          │    ├─ $COLDCACHE_DATA_DIR/coldcache.db
+          │    └─ $COLDCACHE_DATA_DIR/cases/<case_id>/...
           │
           ├─ persisted derived analysis (backend/case_analysis.py)
           │
@@ -88,7 +89,7 @@ That dataset is populated by `scripts/ingest.py` and is separate from the curren
 1. streams each upload into a bounded temp file under `data/upload_tmp/`
 2. hashes while streaming
 3. enforces size/count limits
-4. atomically moves the file into `data/cases/<case_id>/originals/`
+4. atomically moves the file into `$COLDCACHE_DATA_DIR/cases/<case_id>/originals/`
 5. inserts `evidence_items` + an `analyze` job in SQLite
 6. returns immediately with durable IDs
 
@@ -162,7 +163,7 @@ For current case tools, `backend/main.py` uses `_case_llm_answer()` — a compac
 
 Why:
 - faster than Cognee's session-context wrappers for simple UI tasks
-- bounded (`max_tokens=800`, `timeout=45`)
+- bounded (`LLM_CASE_MAX_TOKENS=1600` by default, `timeout=45`)
 - degrades cleanly to deterministic answers when no live provider is available
 
 ### 4.3 Cognee recall fallback

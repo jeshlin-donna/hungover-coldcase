@@ -1,6 +1,6 @@
 # ColdCache — Progress Tracker
 
-> **Last updated:** 2026-07-05 — post-merge documentation accuracy pass.
+> **Last updated:** 2026-07-05 — deployment-readiness and production hardening pass.
 > Primary architecture: durable multi-case workspace + legacy global demo compatibility.
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo
@@ -11,8 +11,8 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 
 ### Case-scoped workspace
 - ✅ Blank case home with create / archive / restore / delete
-- ✅ Application-owned SQLite case store (`data/coldcache.db`)
-- ✅ Durable case file storage under `data/cases/`
+- ✅ Application-owned SQLite case store under configurable `COLDCACHE_DATA_DIR`
+- ✅ Durable case file storage under the same persistent root
 - ✅ Evidence analysis / ingestion / reindex jobs with recovery-friendly leases
 - ✅ Replayable job events plus polling fallback
 - ✅ One immutable Cognee dataset per case
@@ -32,6 +32,16 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 - ✅ Import queue rehydrates after reload
 - ✅ Graph rebuild (`/cases/{id}/reindex`) is visible in the UI
 - ✅ Header case label comes from the stored case title
+- ✅ Model output renders as structured, contained text in Chat, Interrogation, and What-If
+- ✅ Production CSP/security headers for Nginx, Cloudflare Pages, and Vercel
+
+### Deployment readiness
+- ✅ One-process production container for the embedded databases
+- ✅ OCI-oriented Compose stack with persistent volume, HTTPS, and Basic Auth
+- ✅ Exact CORS allowlist and optional trusted-host enforcement
+- ✅ `/ready` checks writable persistent storage and SQLite
+- ✅ Render blueprint corrected to a paid disk-capable plan (free Render is explicitly unsupported for persistence)
+- ✅ Groq production template plus xAI Grok text configuration
 
 ### Legacy/global compatibility retained
 - ✅ Benchmark / narrated demo / mock-compatible global routes still exist
@@ -53,7 +63,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo
 - ⬜ Regenerate full benchmark numbers and update README/blog copy with final Cognee vector/graph metrics
 - ⬜ Decide whether the current frontend should expose case-scoped report and suspect-timeline UI again
 - ⬜ Decide whether `/case-name` should be removed, hidden, or re-wired in a multi-case-safe way
-- ⬜ Add auth / rate limiting before any long-lived public deployment
+- ⬜ Add per-user identity, audit logging, and application-level rate limits before handling sensitive real-world evidence (the private deployment stack currently uses edge Basic Auth)
 
 ---
 

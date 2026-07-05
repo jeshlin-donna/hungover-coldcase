@@ -12,7 +12,11 @@ class CasePersistenceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         root = Path(self.temp.name)
-        self.patches = [patch.object(case_store, "ROOT", root), patch.object(case_store, "DB_PATH", root / "db.sqlite")]
+        self.patches = [
+            patch.object(case_store, "DATA_DIR", root),
+            patch.object(case_store, "DB_PATH", root / "db.sqlite"),
+            patch.object(case_store, "CASE_FILES", root / "cases"),
+        ]
         for item in self.patches: item.start()
         case_store.init_db()
         self.case = case_store.create_case({"title": "Test case"})

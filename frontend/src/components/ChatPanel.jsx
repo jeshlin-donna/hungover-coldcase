@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import FormattedText from "./FormattedText.jsx";
 
 const WELCOME_MSG = {
   role: "assistant",
-  text: "Ask anything about the case. Answers are drawn from the knowledge graph via Cognee GRAPH_COMPLETION — every fact is sourced from ingested evidence.",
+  text: "Ask anything about the case. Answers use the verified case graph and include supporting evidence sources.",
   sources: [],
   showSuggestions: true,
 };
@@ -107,14 +108,14 @@ export default function ChatPanel({ caseId }) {
       <div className="row" style={{ marginBottom: 0, padding: "12px 16px", borderBottom: "1px solid var(--line)" }}>
         <div>
           <span style={{ fontWeight: 700, fontSize: 15 }}>Case Chat</span>
-          <span className="chat-graph-badge" style={{ marginLeft: 10 }}>GRAPH_COMPLETION</span>
+          <span className="chat-graph-badge" style={{ marginLeft: 10 }}>VERIFIED GRAPH</span>
         </div>
       </div>
 
       <div className="chat-messages">
         {messages.map((msg, i) => (
           <div key={i} className={`chat-msg ${msg.role}`}>
-            <div className="chat-msg-text">{msg.text}</div>
+            <FormattedText text={msg.text} className="chat-msg-text" />
             {msg.showSuggestions && (
               <div className="chat-suggestions">
                 {suggestions.map((q) => (

@@ -19,6 +19,7 @@ import base64
 import functools
 import hashlib
 import json
+import os
 import re
 import secrets
 import uuid
@@ -27,8 +28,10 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Header, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Literal
 from backend import case_store
 from backend import case_analysis
 
@@ -487,8 +490,23 @@ except Exception as e:  # pragma: no cover
     print(f"[backend] DEGRADED mode ({type(e).__name__}: {e}) — serving mock data")
 
 app = FastAPI(title="ColdCache — Cold Case Connector")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
-                   allow_headers=["*"])
+_cors_origins = [
+    value.strip().rstrip("/")
+    for value in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if value.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Last-Event-ID"],
+)
+_trusted_hosts = [value.strip() for value in os.getenv("TRUSTED_HOSTS", "").split(",") if value.strip()]
+if _trusted_hosts:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts)
 
 
 @functools.lru_cache(maxsize=32)
@@ -561,12 +579,12 @@ class InterrogationReq(BaseModel):
     focus_case: str = "case:RV-0788"
 
 class WhatIfReq(BaseModel):
-    hypothesis: str
-    inject_edge: dict = {}
+    hypothesis: str = Field(min_length=1, max_length=4000)
+    inject_edge: dict = Field(default_factory=dict)
 
 class ChatReq(BaseModel):
-    message: str
-    history: list[dict] = []  # [{"role": "user"|"assistant", "text": "..."}]
+    message: str = Field(min_length=1, max_length=8000)
+    history: list[dict] = Field(default_factory=list)  # [{"role": "user"|"assistant", "text": "..."}]
 
 class ConfirmIngestReq(BaseModel):
     review_id: str
@@ -577,19 +595,19 @@ class BatchConfirmIngestReq(BaseModel):
     items: list[ConfirmIngestReq]
 
 class CaseCreateReq(BaseModel):
-    title: str
-    reference_number: str | None = None
-    description: str | None = None
-    jurisdiction: str | None = None
+    title: str = Field(min_length=1, max_length=200)
+    reference_number: str | None = Field(default=None, max_length=120)
+    description: str | None = Field(default=None, max_length=10000)
+    jurisdiction: str | None = Field(default=None, max_length=200)
     incident_date: str | None = None
 
 class CaseUpdateReq(BaseModel):
-    title: str | None = None
-    reference_number: str | None = None
-    description: str | None = None
-    jurisdiction: str | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    reference_number: str | None = Field(default=None, max_length=120)
+    description: str | None = Field(default=None, max_length=10000)
+    jurisdiction: str | None = Field(default=None, max_length=200)
     incident_date: str | None = None
-    status: str | None = None
+    status: Literal["open", "archived"] | None = None
 
 class EvidenceConfirmReq(BaseModel):
     reviewed_text: str
@@ -747,6 +765,9 @@ async def case_delete(case_id: str):
     from fastapi import HTTPException, Response
     case = await asyncio.to_thread(case_store.get_case, case_id)
     if not case: raise HTTPException(404, "Case not found.")
+    jobs = await asyncio.to_thread(case_store.list_jobs, case_id)
+    if any(job["status"] in {"queued", "running"} for job in jobs):
+        raise HTTPException(409, "Case has active work")
     try:
         if LIVE: await mem.expunge(dataset=case["dataset_name"])
         await asyncio.to_thread(case_store.delete_case_records, case_id)
@@ -777,7 +798,7 @@ async def case_upload_evidence(
     batch_bytes = 0
     for index, upload in enumerate(files):
         file_bytes = 0; digest = hashlib.sha256()
-        temp_dir = ROOT / "data" / "upload_tmp"; temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_dir = case_store.DATA_DIR / "upload_tmp"; temp_dir.mkdir(parents=True, exist_ok=True)
         temp_path = temp_dir / secrets.token_hex(16)
         try:
             with temp_path.open("wb") as staged:
@@ -924,7 +945,7 @@ async def _case_llm_answer(analysis: dict, instruction: str, question: str) -> s
     import os, urllib.request
     endpoint = os.getenv("LLM_ENDPOINT", "http://localhost:11434/v1").rstrip("/")
     model = os.getenv("LLM_MODEL", "gemma4:e4b")
-    if model.startswith("groq/"): model = model.split("/", 1)[1]
+    if model.startswith(("groq/", "xai/")): model = model.split("/", 1)[1]
     facts = {
         "summary": analysis["summary"],
         "entities": [{"type": n["type"], "label": n["label"], "role": n.get("role"),
@@ -932,10 +953,11 @@ async def _case_llm_answer(analysis: dict, instruction: str, question: str) -> s
                      for n in analysis["nodes"] if n["type"] != "document"][:60],
         "timeline": analysis["timeline"][:30],
     }
+    max_tokens = int(os.getenv("LLM_CASE_MAX_TOKENS", "1600"))
     payload = json.dumps({"model": model, "messages": [
-        {"role": "system", "content": "You are an investigative case assistant. Use only the supplied verified case facts. Distinguish facts from hypotheses and never assume guilt."},
+        {"role": "system", "content": "You are an investigative case assistant. Use only the supplied verified case facts. Distinguish facts from hypotheses and never assume guilt. Be concise (250 words maximum) and complete every sentence."},
         {"role": "user", "content": f"Task: {instruction}\nQuestion: {question}\nCase facts: {json.dumps(facts)}"},
-    ], "temperature": 0.2, "max_tokens": 800, "stream": False}).encode()
+    ], "temperature": 0.2, "max_tokens": max_tokens, "stream": False}).encode()
     headers = {"Content-Type": "application/json"}
     key = os.getenv("LLM_API_KEY", "")
     if key: headers["Authorization"] = f"Bearer {key}"
@@ -943,7 +965,10 @@ async def _case_llm_answer(analysis: dict, instruction: str, question: str) -> s
         request = urllib.request.Request(f"{endpoint}/chat/completions", data=payload, headers=headers)
         with urllib.request.urlopen(request, timeout=45) as response:
             data = json.loads(response.read())
-        return data["choices"][0]["message"].get("content") or data["choices"][0]["message"].get("reasoning")
+        choice = data["choices"][0]
+        # Never put a visibly truncated model answer in an investigative tool.
+        if choice.get("finish_reason") == "length": return None
+        return choice["message"].get("content") or choice["message"].get("reasoning")
     try: return await asyncio.to_thread(call)
     except Exception: return None
 
@@ -1055,6 +1080,24 @@ def health():
         "case_database": case_store.DB_PATH.name,
         "fallback": FALLBACK_STATE,
     }
+
+
+@app.get("/ready")
+def ready():
+    """Readiness probe that verifies the durable app store, not only the process."""
+    from fastapi import HTTPException
+    try:
+        case_store.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        probe = case_store.DATA_DIR / f".ready-{secrets.token_hex(4)}"
+        probe.write_text("ok")
+        probe.unlink()
+        with case_store.connect() as con:
+            con.execute("SELECT 1").fetchone()
+    except Exception as exc:
+        raise HTTPException(503, "Persistent storage is not ready.") from exc
+    if os.getenv("REQUIRE_LIVE_LLM", "false").lower() in {"1", "true", "yes"} and not LIVE:
+        raise HTTPException(503, "LLM provider is not configured.")
+    return {"ok": True, "storage": "writable", "database": "reachable", "mode": "live" if LIVE else "degraded"}
 
 
 async def _get_case_label() -> str:

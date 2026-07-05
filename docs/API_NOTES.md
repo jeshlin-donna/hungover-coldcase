@@ -118,3 +118,5 @@ is enough once `.env` is configured.
 - whether the backend is live
 - how many cases exist
 - whether fallback was recently activated
+
+For hosting probes use `GET /ready`; it also verifies the configured `COLDCACHE_DATA_DIR` is writable and SQLite is reachable.

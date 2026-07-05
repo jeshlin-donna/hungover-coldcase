@@ -2,12 +2,14 @@
 """Create a consistent ColdCache domain DB + evidence backup."""
 from __future__ import annotations
 import argparse
+import os
 import shutil
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = Path(os.getenv("COLDCACHE_DATA_DIR", str(ROOT / "data"))).expanduser().resolve()
 
 def main():
     parser = argparse.ArgumentParser()
@@ -16,11 +18,11 @@ def main():
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     target = args.output / f"coldcache-{stamp}"
     target.mkdir(parents=True, exist_ok=False)
-    source_db = ROOT / "data" / "coldcache.db"
+    source_db = DATA_DIR / "coldcache.db"
     if source_db.exists():
         with sqlite3.connect(source_db) as source, sqlite3.connect(target / "coldcache.db") as destination:
             source.backup(destination)
-    cases = ROOT / "data" / "cases"
+    cases = DATA_DIR / "cases"
     if cases.exists(): shutil.copytree(cases, target / "cases")
     print(target)
 
