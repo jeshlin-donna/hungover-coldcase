@@ -130,6 +130,29 @@ Confirmed content is wrapped by `case_analysis.knowledge_packet()` before Cognee
 
 If Groq-backed extraction fails, ColdCache retries against local Ollama. If typed local extraction also fails, it drops to untyped extraction rather than hard-failing the ingest.
 
+### 3.5 Bundled sample case (pre-baked, resource-constrained hosting)
+
+`cognee.cognify()` performs embedding + LLM entity extraction + graph write per
+file, which comfortably exceeds the RAM budget of a free-tier host on a single
+call — independent of file type or batch size, since jobs are already
+processed strictly sequentially by the durable worker. Rather than block the
+demo on paid infrastructure, the bundled "Millbrook Heights" sample case is
+pre-analyzed once, offline, against the real pipeline (real vision/whisper/
+OCR extraction, real `cognee.remember()`), and its resulting `reviewed_text`
+per file is committed to `data/sample_evidence_prebuilt/`.
+
+When a case is seeded from this sample (`cases.seed_source` is set), the
+durable worker still walks every stage a live upload would — `reading_file` →
+`analyzing_<modality>` → `saving_review` → `staging_cognee` →
+`indexing_graph` — with realistic pacing, so the UI is indistinguishable from
+live processing. The difference is invisible to the user: baked cases reuse
+the pre-computed `reviewed_text` instead of re-calling Groq, and skip the
+`remember()`/`cognify()` call specifically, since `case_analysis.build()`
+(§4.1) already derives the graph, timeline, and chat answers entirely from
+each evidence item's locally stored `reviewed_text` — never from Cognee
+directly. **Custom/user-uploaded evidence always goes through the full live
+pipeline, including real `cognify()`, unchanged.**
+
 ---
 
 ## 4. Query pipeline — current case workflow

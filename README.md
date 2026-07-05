@@ -211,6 +211,25 @@ Current health output includes:
 
 Legacy demo components still exist in `frontend/src/components/`, but several older single-case panels are no longer wired into the main app shell.
 
+### Bundled sample case (reliably demoable on free-tier hosting)
+
+Cognee's `cognify()` call is memory-intensive (embeddings + LLM entity
+extraction + graph write per file) — enough to exceed a free-tier host's RAM
+on a single call, regardless of file type or batch size. So the bundled
+**Millbrook Heights** sample case is pre-analyzed once, offline, through the
+*real* pipeline (real vision/whisper/OCR extraction, real
+`cognee.remember()`), and its output is committed to
+`data/sample_evidence_prebuilt/`.
+
+When seeded, that case still walks every ingestion stage a live upload would
+— reading, analyzing, review, staging, indexing — with realistic pacing, so
+it's visually identical to live processing. It just reuses the pre-computed
+analysis instead of re-calling Groq/Cognee for content that's already been
+verified once. **Any custom file you upload yourself always runs the full
+live pipeline**, including real `cognify()`. See
+[`ARCHITECTURE.md §3.5`](ARCHITECTURE.md#35-bundled-sample-case-pre-baked-resource-constrained-hosting)
+for the full mechanism.
+
 ---
 
 ## Multimodal ingestion
