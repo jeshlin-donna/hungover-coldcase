@@ -1120,9 +1120,12 @@ async def case_stats(case_id: str):
     evidence = await asyncio.to_thread(case_store.list_evidence, case_id)
     jobs = await asyncio.to_thread(case_store.list_jobs, case_id)
     analysis, _ = await _get_case_analysis(case_id)
+    jurisdictions = {e.get("jurisdiction") for e in analysis["timeline"] if e.get("jurisdiction")}
+    if not jurisdictions and case.get("jurisdiction"):
+        jurisdictions = {case["jurisdiction"]}
     return {"nodes": len(analysis["nodes"]),
             "docs": sum(1 for item in evidence if item["status"] == "ingested"),
-            "jurisdictions": 1 if case.get("jurisdiction") else 0,
+            "jurisdictions": len(jurisdictions),
             "active_jobs": sum(1 for job in jobs if job["status"] in ("queued", "running")),
             "graph_revision": case["graph_revision"], "mode": "live" if LIVE else "degraded"}
 
@@ -1158,9 +1161,9 @@ async def _case_llm_answer(analysis: dict, instruction: str, question: str) -> s
         {"role": "system", "content": "You are an investigative case assistant. Use only the supplied verified case facts. Distinguish facts from hypotheses and never assume guilt. Be concise (250 words maximum) and complete every sentence."},
         {"role": "user", "content": f"Task: {instruction}\nQuestion: {question}\nCase facts: {json.dumps(facts)}"},
     ], "temperature": 0.2, "max_tokens": max_tokens, "stream": False}).encode()
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": "coldcache-backend/1.0"}
     key = os.getenv("LLM_API_KEY", "")
-    if key: headers["Authorization"] = f"Bearer {key}"
+    if key: headers["Authorization"] = "Bearer " + key
     def call():
         request = urllib.request.Request(f"{endpoint}/chat/completions", data=payload, headers=headers)
         with urllib.request.urlopen(request, timeout=45) as response:
